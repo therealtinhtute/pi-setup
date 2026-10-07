@@ -1,17 +1,18 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { mixColors, parseColor, truncateToWidth } from "@earendil-works/pi-tui";
+import { parseColor, truncateToWidth } from "@earendil-works/pi-tui";
 
 const BAR_CELLS = 8;
 const MODEL_COLOR = parseColor(208);
 const EFFORT_COLOR = parseColor(5); // ANSI magenta (SGR 35), matching Claude's statusline.
 const TPM_COLOR = parseColor(11); // Bright yellow (SGR 93).
-const CONTEXT_GREEN = parseColor("#4ade80");
-const CONTEXT_CYAN = parseColor("#22d3ee");
-const CONTEXT_RED = parseColor("#f87171");
+const CONTEXT_GRAY = parseColor("#9e9e9e"); // ANSI 247 matching Claude's statusline.
+const CONTEXT_YELLOW = parseColor("#facc15"); // Bright yellow matching Claude's statusline.
+const CONTEXT_RED = parseColor("#f87171"); // Bright red matching Claude's statusline.
 
 function contextColor(percent: number) {
-	if (percent <= 60) return mixColors(CONTEXT_GREEN, CONTEXT_CYAN, percent / 60, "srgb");
-	return mixColors(CONTEXT_CYAN, CONTEXT_RED, Math.min(1, (percent - 60) / 30), "srgb");
+	if (percent >= 75) return CONTEXT_RED;
+	if (percent >= 50) return CONTEXT_YELLOW;
+	return CONTEXT_GRAY;
 }
 
 // Model names and branch names are labels, never terminal control sequences.
@@ -89,11 +90,9 @@ export default function (pi: ExtensionAPI) {
 						: undefined;
 					const filled = Math.round(((percent ?? 0) / 100) * BAR_CELLS);
 					const bar = "━".repeat(filled) + "─".repeat(BAR_CELLS - filled);
-					const context = percent === undefined ? theme.fg("dim", `${bar} ?%`)
-						: Array.from({ length: filled }, (_, index) => theme.style("━", {
-							fg: contextColor(filled === 1 ? percent : (index / (filled - 1)) * percent),
-						})).join("") + theme.fg("dim", "─".repeat(BAR_CELLS - filled))
-							+ " " + theme.style(`${Math.round(percent)}%`, { fg: contextColor(percent) });
+					const context = percent === undefined
+						? theme.style(`${bar} ?%`, { fg: CONTEXT_GRAY })
+						: theme.style(`${bar} ${Math.round(percent)}%`, { fg: contextColor(percent) });
 					const separator = theme.fg("dim", " · ");
 					const parts = [
 						theme.style(`👾 ${model}`, { fg: MODEL_COLOR, bold: true }),
