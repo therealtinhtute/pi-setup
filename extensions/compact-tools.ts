@@ -1,4 +1,4 @@
-import { createReadToolDefinition, getLanguageFromPath, highlightCode, Theme, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createReadToolDefinition, getLanguageFromPath, highlightCode, Theme, ToolExecutionComponent, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { numberlessDiff, renderWithCodeBlockPaint, toolCodeBlock, type ToolRenderContext } from "./code-block.ts";
 import { backgroundAnsi, Box, Container, mixColors, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 
@@ -147,7 +147,81 @@ function bordered(content: Component, theme: Theme): Component {
 	};
 }
 
+function installToolSpacingHook(): void {
+	if ((ToolExecutionComponent as any)?._compactSpacingHookInstalled) return;
+	if (ToolExecutionComponent) (ToolExecutionComponent as any)._compactSpacingHookInstalled = true;
+
+	const origRender = ToolExecutionComponent?.prototype?.render;
+	const origHandleMouse = ToolExecutionComponent?.prototype?.handleMouse;
+	if (!origRender || !origHandleMouse) return;
+
+	Container.prototype.render = function (width: number): string[] {
+		let lastVisibleChild: any = null;
+		const lines: string[] = [];
+		const mouseChildren: Array<{ component: any; height: number }> = [];
+		for (const child of this.children) {
+			if (child && typeof child === "object") {
+				(child as any).parent = this;
+				(child as any)._prevVisibleSibling = lastVisibleChild;
+			}
+			const childLines: string[] = child.render(width);
+			mouseChildren.push({ component: child, height: childLines.length });
+			for (const line of childLines) {
+				lines.push(line);
+			}
+			if (childLines.length > 0) {
+				lastVisibleChild = child;
+			}
+		}
+		(this as any).mouseLayout = { width, children: mouseChildren };
+		return lines;
+	};
+
+	ToolExecutionComponent.prototype.render = function (width: number): string[] {
+		if ((this as any).hideComponent) return [];
+		if ((this as any).hasRendererDefinition?.() && (this as any).getRenderShell?.() === "self") {
+			const contentLines = (this as any).selfRenderContainer.render(width);
+			(this as any).selfRenderHeight = contentLines.length;
+			if (contentLines.length === 0 && (this as any).imageComponents.length === 0) return [];
+
+			const prev = (this as any)._prevVisibleSibling;
+			const isPrevCollapsedTool = prev instanceof ToolExecutionComponent && !(prev as any).expanded;
+
+			const hasTopSpacer = !(isPrevCollapsedTool && !(this as any).expanded);
+			(this as any)._hasTopSpacer = hasTopSpacer;
+
+			const lines: string[] = [];
+			if (contentLines.length > 0) {
+				if (hasTopSpacer) lines.push("");
+				lines.push(...contentLines);
+			}
+			for (let i = 0; i < (this as any).imageComponents.length; i++) {
+				const spacer = (this as any).imageSpacers[i];
+				if (spacer) lines.push(...spacer.render(width));
+				const imageComponent = (this as any).imageComponents[i];
+				if (imageComponent) lines.push(...imageComponent.render(width));
+			}
+			return lines;
+		}
+		return origRender.call(this, width);
+	};
+
+	ToolExecutionComponent.prototype.handleMouse = function (event: any): any {
+		if (!(this as any).hasRendererDefinition?.() || (this as any).getRenderShell?.() !== "self") {
+			return origHandleMouse.call(this, event);
+		}
+		const offset = (this as any)._hasTopSpacer ? 1 : 0;
+		if (event.y < offset || event.y >= (this as any).selfRenderHeight + offset) return undefined;
+		return (this as any).selfRenderContainer.handleMouse({
+			...event,
+			y: event.y - offset,
+			height: (this as any).selfRenderHeight,
+		});
+	};
+}
+
 export default function (pi: ExtensionAPI) {
+	installToolSpacingHook();
 	pi.registerToolRenderer((toolName, next) => {
 		const original = next();
 		return {
