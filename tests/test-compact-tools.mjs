@@ -17,11 +17,12 @@ const jiti = createJiti(import.meta.url, { alias: {
 	"@earendil-works/pi-tui": join(modules, "@earendil-works/pi-tui/dist/index.js"),
 } });
 const { default: extension } = await jiti.import(process.env.COMPACT_TOOLS_SOURCE || resolve("extensions/compact-tools.ts"));
-const { backgroundAnsi, colorToRgb, mixColors, rgbColor, stripTerminalSequences, Text, visibleWidth } = await load(join(modules, "@earendil-works/pi-tui/dist/index.js"));
+const { backgroundAnsi, colorToRgb, Container, mixColors, rgbColor, stripTerminalSequences, Text, visibleWidth } = await load(join(modules, "@earendil-works/pi-tui/dist/index.js"));
 const { loadThemeFromPath, setTerminalColors, setTheme, setThemeInstance, theme: activeTheme } = await load(join(agent, "dist/modes/interactive/theme/theme.js"));
 let terminalBackground = rgbColor(40, 44, 52); // Reporter screenshot: #282c34.
 setTerminalColors({ background: { r: 40, g: 44, b: 52 }, foreground: { r: 229, g: 231, b: 235 } });
 const { withBuiltInRenderers } = await load(join(agent, "dist/core/tools/renderers/index.js"));
+const { AssistantMessageComponent } = await load(join(agent, "dist/modes/interactive/components/assistant-message.js"));
 const { ToolExecutionComponent } = await load(join(agent, "dist/modes/interactive/components/tool-execution.js"));
 const handlers = new Map();
 let resolver;
@@ -336,5 +337,64 @@ for (const theme of themes) {
 	assertFrame(fallback); // The cached default-color Theme must pick up late terminal replies.
 	terminalBackground = rgbColor(40, 44, 52);
 	setTerminalColors({ background: { r: 40, g: 44, b: 52 }, foreground: { r: 229, g: 231, b: 235 } });
+
+	// Consecutive collapsed tool calls render back-to-back with zero blank lines.
+	const container = new Container();
+	const defBash1 = withBuiltInRenderers({ name: "bash" }, resolver("bash", () => ({ renderShell: "self" })));
+	const defBash2 = withBuiltInRenderers({ name: "bash" }, resolver("bash", () => ({ renderShell: "self" })));
+	const defRead = withBuiltInRenderers({ name: "read" }, resolver("read", () => ({ renderShell: "self" })));
+	const t1 = new ToolExecutionComponent("bash", "call-1", { command: "git status" }, {}, defBash1, ui, "/tmp");
+	const t2 = new ToolExecutionComponent("bash", "call-2", { command: "git diff" }, {}, defBash2, ui, "/tmp");
+	const t3 = new ToolExecutionComponent("read", "call-3", { path: "src/index.ts" }, {}, defRead, ui, "/tmp");
+	t1.updateResult({ content: [{ type: "text", text: "clean" }] });
+	t2.updateResult({ content: [{ type: "text", text: "no diff" }] });
+	t3.updateResult({ content: [{ type: "text", text: "export const x = 1;" }] });
+	container.addChild(t1);
+	container.addChild(t2);
+	container.addChild(t3);
+
+	const denseLines = container.render(120);
+	assert.equal(denseLines.length, 4, "first tool call has leading spacer, adjacent tool calls sit on consecutive lines");
+	assert.equal(denseLines[0], "");
+	assert(plain(denseLines[1]).includes("▸ bash git status"));
+	assert(plain(denseLines[2]).includes("▸ bash git diff"));
+	assert(plain(denseLines[3]).includes("▸ read src/index.ts"));
+
+	// Mouse click on line 2 (t2) expands it
+	assert(container.handleMouse({ type: "click", button: "left", x: 2, y: 2, width: 120, height: 4 })?.handled);
+	assert.equal(t2.expanded, true);
+	const expLines = container.render(120);
+	assert.equal(expLines[0], "");
+	assert(plain(expLines[1]).includes("▸ bash git status"));
+	assert.equal(expLines[2], "", "expanded tool call has leading spacer for breathing room");
+	assert(plain(expLines[3]).includes("▾ bash git diff"));
+	assert(expLines.some((line) => line.includes(panelBackground())), "expanded tool call shows framed body");
+
+	// Clicking t2 header again (at y=3) collapses it back to zero spacing
+	assert(container.handleMouse({ type: "click", button: "left", x: 2, y: 3, width: 120, height: expLines.length })?.handled);
+	assert.equal(t2.expanded, false);
+	const collapsedAgain = container.render(120);
+	assert.equal(collapsedAgain.length, 4);
+	assert(plain(collapsedAgain[2]).includes("▸ bash git diff"));
+
+	// Realistic chat transcript structure where AssistantMessageComponents sit between tool calls.
+	const transcript = new Container();
+	const a1 = new AssistantMessageComponent({ role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "bash", arguments: { command: "git status" } }] });
+	const a2 = new AssistantMessageComponent({ role: "assistant", content: [{ type: "toolCall", id: "call-2", name: "bash", arguments: { command: "git diff" } }] });
+	const a3 = new AssistantMessageComponent({ role: "assistant", content: [{ type: "toolCall", id: "call-3", name: "read", arguments: { path: "src/index.ts" } }] });
+	transcript.addChild(a1);
+	transcript.addChild(t1);
+	transcript.addChild(a2);
+	transcript.addChild(t2);
+	transcript.addChild(a3);
+	transcript.addChild(t3);
+
+	const transcriptLines = transcript.render(120);
+	assert.equal(transcriptLines.length, 4, "intervening empty AssistantMessageComponents do not break adjacent tool call dense packing");
+	assert.equal(transcriptLines[0], "");
+	assert(plain(transcriptLines[1]).includes("▸ bash git status"));
+	assert(plain(transcriptLines[2]).includes("▸ bash git diff"));
+	assert(plain(transcriptLines[3]).includes("▸ read src/index.ts"));
+
 	console.log(`PASS ${theme}: one-line calls, interior-only background/30% tint, native overline rules below unshaded heading, native foreground preservation, theme changes, native clicks/Ctrl+O, streaming/errors, widths, unchanged model data`);
 }
