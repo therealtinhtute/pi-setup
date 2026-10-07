@@ -166,11 +166,10 @@ to switch between headers at runtime.
 
 Shows the current model in orange (palette 208) and thinking level in ANSI
 magenta, matching the Claude Code statusline, plus context usage and Git branch
-(omitted outside Git). Filled context-bar cells blend from green through cyan
-to red as usage increases; empty cells stay dim. The percentage matches the
-filled bar's endpoint: green at 0%, cyan at 60%, red at 90% and above, with smooth
-transitions between those stops.
-Unknown context usage displays a dim `?%`.
+(omitted outside Git). Matching Claude Code's statusline thresholds, the entire
+context segment is monochromatic: gray (`#9e9e9e`) below 50%, yellow (`#facc15`)
+from 50%, and red (`#f87171`) from 75%.
+Unknown context usage displays `?%` in gray.
 
 The yellow `ϟ N tpm` segment shows the session-average input + output tokens per
 minute, using all recorded session usage and wall-clock time since the session
