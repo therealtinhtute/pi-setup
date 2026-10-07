@@ -1,20 +1,48 @@
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { loadSkills, getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-let cachedSkills: Array<{ name: string; description: string }> | null = null;
+interface SkillItem {
+	name: string;
+	description: string;
+	filePath: string;
+	baseDir: string;
+}
+
+let cachedSkills: Array<SkillItem> | null = null;
 let lastCacheTime = 0;
 const CACHE_TTL_MS = 5000;
 
+function discoverSkillPaths(cwd: string): string[] {
+	const paths: string[] = [];
+	const userAgents = join(homedir(), ".agents", "skills");
+	if (existsSync(userAgents)) paths.push(userAgents);
+	let cur = cwd;
+	while (true) {
+		const proj = join(cur, ".agents", "skills");
+		if (proj !== userAgents && existsSync(proj)) paths.push(proj);
+		const parent = dirname(cur);
+		if (parent === cur) break;
+		cur = parent;
+	}
+	return paths;
+}
+
 function refreshSkillsCache(cwd: string) {
 	try {
+		const skillPaths = discoverSkillPaths(cwd);
 		const result = loadSkills({
 			cwd,
 			agentDir: getAgentDir(),
-			skillPaths: [],
+			skillPaths,
 			includeDefaults: true,
 		});
 		cachedSkills = result.skills.map((s) => ({
 			name: s.name,
 			description: s.description,
+			filePath: s.filePath,
+			baseDir: s.baseDir,
 		}));
 		lastCacheTime = Date.now();
 	} catch {
@@ -23,7 +51,7 @@ function refreshSkillsCache(cwd: string) {
 	return cachedSkills;
 }
 
-function getSkills(cwd: string) {
+function getSkills(cwd: string): SkillItem[] {
 	if (!cachedSkills || Date.now() - lastCacheTime > CACHE_TTL_MS) {
 		return refreshSkillsCache(cwd);
 	}
@@ -39,13 +67,43 @@ function isKnownSkill(cwd: string, skillName: string): boolean {
 }
 
 export default function dollarSkillExtension(pi: ExtensionAPI) {
-	// 1. Hook input: Chuyển $skill [args] thành /skill:skill [args]
+	// 1. Hook input: Chuyển $skill [args] hoặc pipeline $skill1 -> $skill2 [args]
 	pi.on("input", async (event, ctx) => {
 		const trimmed = event.text.trim();
 		if (!trimmed.startsWith("$")) {
 			return { action: "continue" };
 		}
 
+		// A. Kiểm tra chuỗi pipeline: vd "$think -> $work", "$think ➔ $work", "$think | $work"
+		const pipelineRegex = /^(\$[a-zA-Z0-9-]+(?:\s*(?:->|➔|=>|\|)\s*\$[a-zA-Z0-9-]+)+)(?:\s+([\s\S]*))?$/;
+		const pipeMatch = trimmed.match(pipelineRegex);
+		if (pipeMatch) {
+			const chain = pipeMatch[1];
+			const userMessage = pipeMatch[2]?.trim() || "";
+			const names = chain.split(/\s*(?:->|➔|=>|\|)\s*/).map((s) => s.replace(/^\$/, ""));
+			const allSkills = getSkills(ctx.cwd);
+			const found = names.map((n) => allSkills.find((s) => s.name.toLowerCase() === n.toLowerCase()));
+
+			if (found.every(Boolean)) {
+				const stages: string[] = [];
+				for (let i = 0; i < found.length; i++) {
+					const s = found[i]!;
+					let content = "";
+					try {
+						content = readFileSync(s.filePath, "utf-8").replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+					} catch {
+						content = s.description;
+					}
+					stages.push(`## Stage ${i + 1}: ${s.name}\nReferences are relative to ${s.baseDir}.\n\n${content}`);
+				}
+				const pipelineName = names.join(" ➔ ");
+				const combinedContent = `# Pipeline: ${pipelineName}\n\nExecute the following skills sequentially as stages in a pipeline:\n\n${stages.join("\n\n---\n\n")}`;
+				const transformed = `<skill name="${pipelineName}" location="Pipeline: ${pipelineName}">\n${combinedContent}\n</skill>${userMessage ? `\n\n${userMessage}` : ""}`;
+				return { action: "transform", text: transformed };
+			}
+		}
+
+		// B. Single skill: $skill [args]
 		const withoutDollar = trimmed.slice(1).trim();
 		if (!withoutDollar) {
 			return { action: "continue" };

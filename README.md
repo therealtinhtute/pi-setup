@@ -245,7 +245,8 @@ reload to restore native code presentation.
 
 **`dollar-skill.ts`** — types `$skill-name` and rewrites it to
 `/skill:skill-name` on submit, plus `$`-triggered autocomplete over installed
-skills.
+skills. Also supports multi-skill pipeline chains such as `$think -> $work`
+or `$think ➔ $work`, combining stages sequentially into a single pipeline prompt.
 
 **`skill-highlight-editor.ts`** — draws known `/skill:<name>` invocations as bold
 teal `💡 name` chips on `customMessageBg`, after the stock editor lays out the
@@ -293,18 +294,19 @@ changes — widget writes re-render the transcript. Use either extension or both
 they do not conflict.
 
 **`skill-transcript-badge.ts`** — transforms Pi's bulky stock `[skill]` message box
-into a sleek, 1-line pill badge when collapsed and an edge-aligned structured panel
+into a sleek, 1-line flat divider strip when collapsed and a framed structured card
 when expanded:
 
 ```text
-╭─ ⚡ Skill: 💡 think ────── 3.8k tokens · 142 lines · ~/.agents/skills/think/SKILL.md  [▾ expand] ─╮
+── ⚡ Skill: 💡 think ────── 3.8k tokens · 142 lines · ~/.agents/skills/think/SKILL.md  [▾ expand] ──
 ```
 
 When collapsed, removes top/bottom padding to occupy a single terminal row, displaying
-the skill name, estimated injected tokens, line count, and location path (adaptively
-abbreviated on narrower viewports). When expanded with mouse click or `Ctrl+O`, renders
-a framed panel with location metadata, clean syntax-colored instruction body, and
-rounded border framing.
+a flat divider bar on a subtle `customMessageBg` background that contrasts gently
+with the conversation surface (without bulky corner brackets). When expanded with mouse
+click or `Ctrl+O`, encloses the skill content into a framed card with location metadata,
+clean syntax-colored instruction body, and rounded border framing. Multi-skill pipelines
+render as `── ⚡ Pipeline: 💡 think ➔ work ──`.
 
 All eight are plain TypeScript and are loaded directly from
 `~/.pi/agent/extensions/`. The header, footer, and initial tool-folding state

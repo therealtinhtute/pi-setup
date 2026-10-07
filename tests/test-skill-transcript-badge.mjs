@@ -57,11 +57,24 @@ for (const themeName of ["dark", "light"]) {
 	assert.equal(component.paddingX, 0, "paddingX is reset to 0 in collapsed state");
 
 	const collapsedText = plain(collapsedLines[0]);
+	assert(!collapsedText.includes("╭─"), "collapsed badge does not have corner bracket ╭─");
+	assert(!collapsedText.includes("─╮"), "collapsed badge does not have corner bracket ─╮");
+	assert(collapsedText.startsWith("──"), "collapsed badge starts with flat rule ──");
+	assert(collapsedText.trimEnd().endsWith("──"), "collapsed badge ends with flat rule ──");
+	assert(collapsedLines[0].includes("\u001b[48;2;"), "collapsed badge has subtle customMessageBg background");
 	assert(collapsedText.includes("⚡ Skill: 💡 think"), "contains skill name with glyph");
 	assert(collapsedText.includes("tokens"), "contains estimated tokens");
 	assert(collapsedText.includes("5 lines"), "contains line count");
 	assert(collapsedText.includes("~/.agents/skills/think/SKILL.md"), "contains shortened home path");
 	assert(collapsedText.includes("[▾ expand]"), "contains expand action hint");
+
+	// Pipeline badge format
+	const pipeBlock = { name: "think ➔ work", location: "Pipeline: think ➔ work", content: "Stage 1\nStage 2", userMessage: "test" };
+	const pipeComp = new SkillInvocationMessageComponent(pipeBlock);
+	const pipeText = plain(pipeComp.render(120)[0]);
+	assert(pipeText.includes("⚡ Pipeline: 💡 think ➔ work"), "pipeline badge has pipeline prefix");
+	assert(!pipeText.includes("╭─"));
+	assert(pipeComp.render(120)[0].includes("\u001b[48;2;"));
 
 	// Responsive truncation at different widths
 	for (const width of [120, 80, 50, 30]) {

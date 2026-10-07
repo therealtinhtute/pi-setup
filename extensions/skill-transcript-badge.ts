@@ -78,36 +78,38 @@ export function installSkillBadgeHook(): void {
 		const content = new Container();
 
 		if (!this.expanded) {
+			const isPipeline = name.includes("➔") || name.includes("->");
+			const prefix = isPipeline ? "⚡ Pipeline: 💡 " : "⚡ Skill: 💡 ";
 			const badge: Component = {
 				render(width: number): string[] {
-					const title = ` ⚡ Skill: 💡 ${name} `;
+					const title = ` ${prefix}${name} `;
 					const hint = " [▾ expand] ";
 
 					// Adaptively include metadata based on terminal width
 					let meta = ` ${tokenStr} tokens · ${linesCount} lines · ${location} `;
-					let innerSpace = width - visibleWidth(title) - visibleWidth(meta) - visibleWidth(hint) - 4;
+					let innerSpace = width - visibleWidth(title) - visibleWidth(meta) - visibleWidth(hint) - 6;
 					if (innerSpace < 1) {
 						meta = ` ${tokenStr} tokens · ${location} `;
-						innerSpace = width - visibleWidth(title) - visibleWidth(meta) - visibleWidth(hint) - 4;
+						innerSpace = width - visibleWidth(title) - visibleWidth(meta) - visibleWidth(hint) - 6;
 					}
 					if (innerSpace < 1) {
 						meta = ` ${tokenStr} tokens `;
-						innerSpace = width - visibleWidth(title) - visibleWidth(meta) - visibleWidth(hint) - 4;
+						innerSpace = width - visibleWidth(title) - visibleWidth(meta) - visibleWidth(hint) - 6;
 					}
 					if (innerSpace < 1) {
 						meta = "";
-						innerSpace = width - visibleWidth(title) - visibleWidth(hint) - 4;
+						innerSpace = width - visibleWidth(title) - visibleWidth(hint) - 6;
 					}
 
 					const fill = "─".repeat(Math.max(1, innerSpace));
-					const row = theme.fg("syntaxVariable", "╭─")
+					const row = theme.fg("syntaxVariable", "──")
 						+ theme.bold(theme.fg("customMessageLabel", title))
 						+ theme.fg("borderMuted", fill)
 						+ (meta ? theme.fg("dim", meta) : "")
 						+ theme.fg("muted", hint)
-						+ theme.fg("syntaxVariable", "─╮");
+						+ theme.fg("syntaxVariable", "──");
 
-					return [truncateToWidth(row, Math.max(0, width))];
+					return [theme.bg("customMessageBg", truncateToWidth(row, Math.max(0, width)))];
 				},
 				invalidate() {},
 			};

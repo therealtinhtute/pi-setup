@@ -332,4 +332,17 @@ const plainChip = (write) => stripTags(stripTerminalSequences(write.content[0]))
 	assert.equal(width, 20, `chip renders 20 columns (got ${width})`);
 }
 
+// ---------------------------------------------------------------------------
+// Pipeline syntax with "->" renders a connected chain: 💡 Pipeline: think ➔ work | SWE-2 · max
+// ---------------------------------------------------------------------------
+{
+	const handlers = loadExtension();
+	const harness = makeUi("$think -> $work please fix");
+	handlers.get("session_start")({}, harness.ctx);
+	harness.fireInput("x");
+	await settle();
+	const chip = plainChip(harness.widgets.at(-1));
+	assert.equal(chip, "💡 Pipeline: think ➔ work | SWE-2 · max", "pipeline chain uses ➔ separator and Pipeline prefix");
+}
+
 console.log("PASS skill-invoke-chip: banner layout, tokens, session state, known/unknown, dedupe, $ alias, overflow, leaks, fault tolerance");

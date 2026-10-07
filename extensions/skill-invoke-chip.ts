@@ -108,13 +108,15 @@ export default function skillInvokeChip(pi: ExtensionAPI) {
 	};
 
 	/** The rendered chip line, or undefined when nothing is invoked. */
-	const chipFor = (names: string[], ctx: ExtensionContext): string | undefined => {
+	const chipFor = (names: string[], text: string, ctx: ExtensionContext): string | undefined => {
 		if (names.length === 0) return undefined;
 
 		const theme = ctx.ui.theme;
 		const shown = names.slice(0, MAX_NAMES);
 		const overflow = names.length - shown.length;
-		const label = shown.join(" · ") + (overflow > 0 ? ` +${overflow}` : "");
+		const isPipeline = names.length > 1 && /(?:\$|\/skill:)[a-zA-Z0-9-]+\s*(?:->|➔|=>|\|)\s*(?:\$|\/skill:)/.test(text);
+		const separator = isPipeline ? " ➔ " : " · ";
+		const label = (isPipeline ? "Pipeline: " : "") + shown.join(separator) + (overflow > 0 ? ` +${overflow}` : "");
 
 		const glyph = theme.fg("syntaxVariable", GLYPH);
 		const name = theme.fg("customMessageLabel", label);
@@ -141,7 +143,7 @@ export default function skillInvokeChip(pi: ExtensionAPI) {
 
 		let chip: string | undefined;
 		try {
-			chip = chipFor(invokedNames(text, known), ctx);
+			chip = chipFor(invokedNames(text, known), text, ctx);
 		} catch {
 			return;
 		}
