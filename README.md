@@ -198,7 +198,8 @@ extension statuses; `/builtin-footer` restores them.
 ▸ bash npm test
 ```
 
-In fullscreen mode, click the tool header after a result arrives to expand it;
+Adjacent collapsed tool calls sit back-to-back without blank lines. In fullscreen
+mode, click the tool header after a result arrives to expand it;
 click again to collapse it. `Ctrl+O` expands/collapses all tools and also works
 in regular terminal mode. Expanded output uses one padded `Box` layout with a
 neutral tint blended at 30% over Pi's reported terminal background (ANSI has no
