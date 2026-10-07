@@ -308,7 +308,21 @@ click or `Ctrl+O`, encloses the skill content into a framed card with location m
 clean syntax-colored instruction body, and rounded border framing. Multi-skill pipelines
 render as `── ⚡ Pipeline: 💡 think ➔ work ──`.
 
-All eight are plain TypeScript and are loaded directly from
+**`transcript-summary-cards.ts`** — redesigns Pi's stock `[compaction]` and `[branch]`
+message blocks. Eliminates the bulky filled purple box and replaces it with a clean 1-line flat
+divider bar on `customMessageBg` when collapsed, and a structured card with **border-mounted
+top-left titles** (`╭─ 🗜️ Context Compaction ──...─╮` / `╭─ 🌿 Branch Handoff ──...─╮`)
+when expanded:
+
+```text
+╭─ 🗜️ Context Compaction ────────────────────────────────────────── [▴ collapse] ─╮
+│ 📦 Compacted from 168,400 tokens · context refreshed                             │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ Explored and implemented transcript UI components...                             │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+```
+
+All nine are plain TypeScript and are loaded directly from
 `~/.pi/agent/extensions/`. The header, footer, and initial tool-folding state
 activate automatically in TUI mode; no extra package or installer change is needed.
 
@@ -323,6 +337,7 @@ node tests/test-code-block.mjs
 node tests/test-skill-highlight.mjs
 node tests/test-skill-invoke-chip.mjs
 node tests/test-skill-transcript-badge.mjs
+node tests/test-transcript-summary-cards.mjs
 ```
 
 Verify the search and package templates without credentials or network calls:
