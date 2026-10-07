@@ -292,7 +292,21 @@ and the `$<name>` alias, and only rewrites the widget when the chip actually
 changes — widget writes re-render the transcript. Use either extension or both;
 they do not conflict.
 
-All seven are plain TypeScript and are loaded directly from
+**`skill-transcript-badge.ts`** — transforms Pi's bulky stock `[skill]` message box
+into a sleek, 1-line pill badge when collapsed and an edge-aligned structured panel
+when expanded:
+
+```text
+╭─ ⚡ Skill: 💡 think ────── 3.8k tokens · 142 lines · ~/.agents/skills/think/SKILL.md  [▾ expand] ─╮
+```
+
+When collapsed, removes top/bottom padding to occupy a single terminal row, displaying
+the skill name, estimated injected tokens, line count, and location path (adaptively
+abbreviated on narrower viewports). When expanded with mouse click or `Ctrl+O`, renders
+a framed panel with location metadata, clean syntax-colored instruction body, and
+rounded border framing.
+
+All eight are plain TypeScript and are loaded directly from
 `~/.pi/agent/extensions/`. The header, footer, and initial tool-folding state
 activate automatically in TUI mode; no extra package or installer change is needed.
 
@@ -306,6 +320,7 @@ node tests/test-compact-tools.mjs
 node tests/test-code-block.mjs
 node tests/test-skill-highlight.mjs
 node tests/test-skill-invoke-chip.mjs
+node tests/test-skill-transcript-badge.mjs
 ```
 
 Verify the search and package templates without credentials or network calls:
