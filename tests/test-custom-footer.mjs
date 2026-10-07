@@ -18,11 +18,11 @@ const jiti = createJiti(import.meta.url, { alias: {
 	"@earendil-works/pi-tui": pkg("pi-tui", "dist/index.js"),
 } });
 const { default: extension } = await jiti.import(resolve("extensions/custom-footer.ts"));
-const { mixColors, parseColor, visibleWidth } = await load(pkg("pi-tui", "dist/index.js"));
-const green = parseColor("#4ade80"), cyan = parseColor("#22d3ee"), red = parseColor("#f87171");
-const contextColor = (percent) => percent <= 60
-	? mixColors(green, cyan, percent / 60, "srgb")
-	: mixColors(cyan, red, Math.min(1, (percent - 60) / 30), "srgb");
+const { parseColor, visibleWidth } = await load(pkg("pi-tui", "dist/index.js"));
+const gray = parseColor("#9e9e9e"), yellow = parseColor("#facc15"), red = parseColor("#f87171");
+const contextColor = (percent) => percent >= 75
+	? red
+	: percent >= 50 ? yellow : gray;
 const { getThemeByName } = await load(pkg("pi-coding-agent", "dist/modes/interactive/theme/theme.js"));
 const plain = (text) => text.replace(/\x1b\[[0-9;]*m/g, "");
 
@@ -80,7 +80,7 @@ for (const themeName of ["dark", "light"]) {
 	assert.equal(text(), " 👾 Opus 5.5 · low · ──────── 0% · ⌥ main");
 	assert(header.render(120)[0].includes(theme.style("👾 Opus 5.5", { fg: parseColor(208), bold: true })));
 	assert(header.render(120)[0].includes(theme.style("low", { fg: parseColor(5) })));
-	assert(header.render(120)[0].includes(theme.style("0%", { fg: green })));
+	assert(header.render(120)[0].includes(theme.style("──────── 0%", { fg: gray })));
 	for (let cells = 0; cells <= 8; cells++) {
 		percent = cells * 12.5;
 		assert(text().includes("━".repeat(cells) + "─".repeat(8 - cells)));
@@ -94,14 +94,12 @@ for (const themeName of ["dark", "light"]) {
 		percent = value;
 		const bar = "━".repeat(cells) + "─".repeat(8 - cells);
 		const clamped = Math.max(0, Math.min(100, value));
-		const expected = display === "?" ? theme.fg("dim", `${bar} ?%`)
-			: Array.from({ length: cells }, (_, index) => theme.style("━", {
-				fg: contextColor(cells === 1 ? clamped : (index / (cells - 1)) * clamped),
-			})).join("") + theme.fg("dim", "─".repeat(8 - cells))
-				+ " " + theme.style(`${display}%`, { fg: contextColor(clamped) });
-		assert(header.render(120)[0].includes(expected), "filled context smoothly blends green/cyan/red; empty cells stay dim");
-		if (value === 60) assert(header.render(120)[0].includes(theme.style("60%", { fg: cyan })));
-		if (value === 90) assert(header.render(120)[0].includes(theme.style("90%", { fg: red })));
+		const expected = theme.style(`${bar} ${display}%`, {
+			fg: display === "?" ? gray : contextColor(clamped),
+		});
+		assert(header.render(120)[0].includes(expected), "monochromatic context matches Claude thresholds (<50% gray, >=50% yellow, >=75% red)");
+		if (value === 50) assert(header.render(120)[0].includes(theme.style("━━━━──── 50%", { fg: yellow })));
+		if (value === 75) assert(header.render(120)[0].includes(theme.style("━━━━━━── 75%", { fg: red })));
 		for (const width of [0, 1, 10, 20, 40, 80, 120]) {
 			const lines = header.render(width);
 			assert.equal(lines.length, 1);
