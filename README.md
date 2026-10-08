@@ -153,6 +153,96 @@ Config file: `~/.pi/agent/web-search.json`.
 
 ## Extensions
 
+**`decision-compact.ts`** — decision-model pruning for **Pi 1.1.0+**. It keeps
+user/assistant prose verbatim and asks a classifier which eligible tool pairs to
+keep, truncate, or drop. Edits only affect future model context; original
+messages, exports, and chat billing remain intact. Native `/compact` is unchanged.
+
+Load it explicitly for a trial, without installing globally:
+
+```bash
+pi --extension ./extensions/decision-compact.ts
+```
+
+Create `<agent-dir>/decision-compact.json` (normally `~/.pi/agent/decision-compact.json`)
+from `config/decision-compact.example.json`, or write this minimal opt-in:
+
+```json
+{
+  "provider": "typesafe",
+  "model": "jev-latest",
+  "allowRemoteDecisions": true,
+  "auto": false
+}
+```
+
+**Opting in sends conversational text, file paths, tool arguments, and output
+excerpts to the selected classifier provider.** No redaction guarantee is made.
+The installer does not copy this config or enable remote calls. Missing config
+means no classifier calls. Trusted `.pi/decision-compact.json` can override the
+model and policy, but cannot grant consent without the user-level opt-in.
+Config is read on each command/attempt; keys, URLs, shell commands, and unknown
+fields are rejected. Keep credentials in Pi's normal auth store or environment.
+The example's `allowRemoteDecisions` is deliberately `false`.
+
+| Provider | Model | Credentials |
+| :--- | :--- | :--- |
+| `typesafe` (default) | `jev-latest` | `TYPESAFE_API_KEY` |
+| `opencode` | `jev-1.13` or `jev-1.13-free` | `OPENCODE_API_KEY` |
+| `cloudflare-workers-ai` | `@cf/cloudflare/clef` or `@cf/cloudflare/clef-flash` | `CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` |
+
+Other registered Pi classifier models use the same `provider`/`model` config.
+Lookup stays exact: there is no automatic cross-provider or free-model fallback.
+A standalone custom decision API needs a Pi classifier provider registration.
+Codemode is not required, and the main chat model is not changed.
+
+- `/decision-compact preview`: calls the classifier and reports a proposal;
+  does not apply edits. **Preview is not offline.**
+- `/decision-compact apply`: arms branch-scoped pruning for the next completed
+  `turn_end`, after the next prompt. It does not apply immediately while idle
+  and does not create an extra chat turn.
+- `/decision-compact cancel`: cancels pending/in-flight work.
+- `/decision-compact status`: shows the queue, last outcome, proposal estimates,
+  and classifier usage. Commit is verified against persisted edits; later
+  overrides are reported rather than presented as successful pruning.
+
+For auto mode, explicitly set `auto: true`; the initial watermark is 60%.
+Cooldown and new-material checks prevent repeated attempts on unchanged context.
+Requests are bounded by question count, estimated tokens, bytes, concurrency,
+requests per attempt, and a hard deadline. Transport retries are disabled.
+Default acceptance requires at least 25% estimated context-token reduction.
+
+Safety is conservative. Recent endpoints, failed/incomplete pairs, images,
+opaque provider signatures, unknown tools, and non-reconstructible effects are
+pinned. Native `edit`/`write` additionally require their exact execution receipt
+in surviving assistant prose. **Old tool history without this extension's
+execution-time provenance is pinned**, even if today's tool has the same name.
+Start the extension before the tool work you want it to prune; provenance
+survives resume/fork with the branch. Signed-model histories may produce no
+eligible pairs. Full conversational prose must fit the classifier evidence
+budget; oversized history is skipped, never silently clipped by the server.
+
+On failure or insufficient savings, context is retained; Pi's normal threshold/
+overflow compaction remains available. Use `/compact` manually if needed.
+Classifier usage is reported separately because public boundary drafts cannot
+append native usage entries. Unverified zero catalog pricing is shown as unknown;
+only the explicitly selected OpenCode free model accepts its zero catalog estimate,
+which is not a promise of future availability or pricing. No live speed, quality,
+or total-cost improvements have been measured.
+
+Offline verification:
+
+```bash
+node tests/test-decision-compact.mjs
+node tests/test-decision-compact-core.mjs
+node tests/test-decision-compact-runtime.mjs
+npm exec --package=typescript@5.9.3 -- node scripts/typecheck-decision-compact.mjs
+```
+
+The tests never contact a classifier. The static-check command may download
+TypeScript through npm; to stay offline, set `PI_TYPESCRIPT` to an existing
+TypeScript package directory. `PI_NODE_MODULES` overrides the Pi install layout.
+
 **`custom-banner.ts`** — replaces the default TUI header with a gradient
 TINHTUTE banner. Centers and truncates using terminal display widths, with a
 compact fallback on narrow terminals. Adds `/custom-header` and `/builtin-header`
@@ -333,7 +423,7 @@ when expanded:
 ╰──────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-All nine are plain TypeScript and are loaded directly from
+These extensions are plain TypeScript and are loaded directly from
 `~/.pi/agent/extensions/`. The header, footer, and initial tool-folding state
 activate automatically in TUI mode; no extra package or installer change is needed.
 
@@ -569,6 +659,7 @@ Remove what was installed:
 ```bash
 rm ~/.pi/agent/extensions/code-block.ts
 rm ~/.pi/agent/extensions/compact-tools.ts
+rm ~/.pi/agent/extensions/decision-compact.ts
 rm ~/.pi/agent/extensions/custom-banner.ts
 rm ~/.pi/agent/extensions/custom-footer.ts
 rm ~/.pi/agent/extensions/dollar-skill.ts
