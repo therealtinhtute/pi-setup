@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import {
 	type ExtensionAPI,
 	SkillInvocationMessageComponent,
-	Theme,
+	type Theme,
 } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
@@ -42,7 +42,7 @@ function formatTokens(tokens: number): string {
 
 function shortenPath(location: string): string {
 	const home = homedir();
-	if (location.startsWith(home)) {
+	if (location.startsWith(`${home}/`) || location === home) {
 		return `~${location.slice(home.length)}`;
 	}
 	return location;
@@ -51,9 +51,7 @@ function shortenPath(location: string): string {
 export function installSkillBadgeHook(): void {
 	if (!SkillInvocationMessageComponent) return;
 	const proto = SkillInvocationMessageComponent.prototype as any;
-	if (proto._skillBadgeHookInstalled) return;
-	proto._skillBadgeHookInstalled = true;
-
+	// Replace the previous hook on /reload, but retain Pi's original fallback.
 	const origUpdateDisplay = (proto._origUpdateDisplay ??= proto.updateDisplay);
 
 	proto.updateDisplay = function (): void {
@@ -62,7 +60,6 @@ export function installSkillBadgeHook(): void {
 		this.paddingX = 0;
 		this.setBgFn?.(undefined);
 
-		const theme = resolveTheme();
 		const block = this.skillBlock;
 		if (!block) {
 			origUpdateDisplay.call(this);
@@ -70,100 +67,53 @@ export function installSkillBadgeHook(): void {
 		}
 
 		const name = block.name ?? "unknown";
+		const label = name.includes("➔") || name.includes("->") ? "PIPELINE" : "SKILL";
 		const location = block.location ? shortenPath(block.location) : "";
 		const linesCount = block.content ? block.content.split("\n").length : 0;
 		const estTokens = block.content ? Math.max(1, Math.round(block.content.length / 4)) : 0;
 		const tokenStr = formatTokens(estTokens);
-
+		const expanded = this.expanded;
 		const content = new Container();
 
-		if (!this.expanded) {
-			const isPipeline = name.includes("➔") || name.includes("->");
-			const prefix = isPipeline ? "⚡ Pipeline: 💡 " : "⚡ Skill: 💡 ";
-			const badge: Component = {
-				render(width: number): string[] {
-					const title = ` ${prefix}${name} `;
-					const hint = " [▾ expand] ";
+		const header: Component = {
+			render(width: number): string[] {
+				const theme = resolveTheme();
+				const marker = `${expanded ? "▾" : "▸"} 💡 ${label}`;
+				const title = theme.bold(theme.fg("syntaxVariable", marker))
+					+ "  " + theme.bold(theme.fg("text", name));
+				// Prefer a readable skill name over metadata on narrow terminals.
+				const stats = ` · ≈${tokenStr} tokens`;
+				const row = title + (visibleWidth(title + stats) <= width ? theme.fg("muted", stats) : "");
+				const clipped = truncateToWidth(row, Math.max(0, width));
+				const padding = " ".repeat(Math.max(0, width - visibleWidth(clipped)));
+				const headerRow = theme.bg("customMessageBg", clipped + padding);
+				if (!expanded) return [headerRow];
 
-					// Adaptively include metadata based on terminal width
-					let meta = ` ${tokenStr} tokens · ${linesCount} lines · ${location} `;
-					let innerSpace = width - visibleWidth(title) - visibleWidth(meta) - visibleWidth(hint) - 6;
-					if (innerSpace < 1) {
-						meta = ` ${tokenStr} tokens · ${location} `;
-						innerSpace = width - visibleWidth(title) - visibleWidth(meta) - visibleWidth(hint) - 6;
-					}
-					if (innerSpace < 1) {
-						meta = ` ${tokenStr} tokens `;
-						innerSpace = width - visibleWidth(title) - visibleWidth(meta) - visibleWidth(hint) - 6;
-					}
-					if (innerSpace < 1) {
-						meta = "";
-						innerSpace = width - visibleWidth(title) - visibleWidth(hint) - 6;
-					}
+				const metadata = `  ${location ? `${location} · ` : ""}${linesCount} lines`;
+				return [
+					headerRow,
+					truncateToWidth(theme.fg("dim", metadata), Math.max(0, width)),
+					"",
+				];
+			},
+			invalidate() {},
+		};
+		content.addChild(header);
 
-					const fill = "─".repeat(Math.max(1, innerSpace));
-					const row = theme.fg("syntaxVariable", "──")
-						+ theme.bold(theme.fg("customMessageLabel", title))
-						+ theme.fg("borderMuted", fill)
-						+ (meta ? theme.fg("dim", meta) : "")
-						+ theme.fg("muted", hint)
-						+ theme.fg("syntaxVariable", "──");
-
-					return [theme.bg("customMessageBg", truncateToWidth(row, Math.max(0, width)))];
-				},
-				invalidate() {},
-			};
-			content.addChild(badge);
-		} else {
-			const header: Component = {
-				render(width: number): string[] {
-					const title = ` ⚡ Skill: 💡 ${name} `;
-					const hint = " [▴ collapse] ";
-					const fill = "─".repeat(Math.max(1, width - visibleWidth(title) - visibleWidth(hint) - 4));
-					const top = theme.fg("syntaxVariable", "╭─")
-						+ theme.bold(theme.fg("customMessageLabel", title))
-						+ theme.fg("borderMuted", fill)
-						+ theme.fg("muted", hint)
-						+ theme.fg("syntaxVariable", "─╮");
-
-					const metaText = `📍 ${location}  ·  📦 ${linesCount} lines (~${tokenStr} tokens)`;
-					const metaInner = " ".repeat(Math.max(1, width - visibleWidth(metaText) - 4));
-					const metaRow = theme.fg("syntaxVariable", "│ ")
-						+ theme.fg("dim", metaText)
-						+ metaInner
-						+ theme.fg("syntaxVariable", " │");
-
-					const sep = theme.fg("syntaxVariable", "├─")
-						+ theme.fg("borderMuted", "─".repeat(Math.max(1, width - 4)))
-						+ theme.fg("syntaxVariable", "─┤");
-
-					return [
-						truncateToWidth(top, Math.max(0, width)),
-						truncateToWidth(metaRow, Math.max(0, width)),
-						truncateToWidth(sep, Math.max(0, width)),
-					];
-				},
-				invalidate() {},
-			};
-			content.addChild(header);
-
-			// Markdown body with customMessageText styling
-			const md = new Markdown(block.content ?? "", 2, 0, this.markdownTheme, {
-				color: (text: string) => theme.fg("customMessageText", text),
+		if (expanded) {
+			const md = new Markdown(block.content ?? "", 0, 0, this.markdownTheme, {
+				color: (text: string) => resolveTheme().fg("customMessageText", text),
 			});
-			content.addChild(md);
-
-			const footer: Component = {
+			// Adapt indentation so even very narrow terminals stay width-safe.
+			content.addChild({
 				render(width: number): string[] {
-					const fill = "─".repeat(Math.max(1, width - 4));
-					const bottom = theme.fg("syntaxVariable", "╰─")
-						+ theme.fg("borderMuted", fill)
-						+ theme.fg("syntaxVariable", "─╯");
-					return [truncateToWidth(bottom, Math.max(0, width))];
+					const indent = " ".repeat(Math.min(2, Math.max(0, width - 1)));
+					return md.render(Math.max(1, width - indent.length)).map((line) =>
+						truncateToWidth(indent + line, Math.max(0, width)),
+					);
 				},
-				invalidate() {},
-			};
-			content.addChild(footer);
+				invalidate() { md.invalidate(); },
+			});
 		}
 
 		this.addChild(
