@@ -18,131 +18,122 @@ const jiti = createJiti(import.meta.url, { alias: {
 
 const { stripTerminalSequences, visibleWidth } =
 	await load(join(modules, "@earendil-works/pi-tui/dist/index.js"));
-const { default: extension, setActiveTheme } = await jiti.import(
+const { default: extension, setActiveTheme, installSkillBadgeHook } = await jiti.import(
 	process.env.SKILL_BADGE_SOURCE || resolve("extensions/skill-transcript-badge.ts"));
 const { getThemeByName, initTheme } = await load(join(agent, "dist/modes/interactive/theme/theme.js"));
 initTheme();
 const { SkillInvocationMessageComponent } = await load(join(agent, "dist/modes/interactive/components/skill-invocation-message.js"));
 
 const plain = stripTerminalSequences;
+const assertNoFrame = (lines) => assert(!lines.map(plain).join("\n").match(/[─╭╮╰╯├┤│]/), "badge has no frame or divider");
+const click = (component, button = "left") => component.handleMouse({
+	type: "click", button, x: 2, y: 0, width: 120, height: component.render(120).length,
+});
 
 for (const themeName of ["dark", "light"]) {
 	const theme = getThemeByName(themeName);
 	setActiveTheme(theme);
-
 	const handlers = new Map();
-	extension({
-		on: (name, fn) => handlers.set(name, fn),
-	});
-
-	// Trigger session_start to set active theme
+	extension({ on: (name, fn) => handlers.set(name, fn) });
 	handlers.get("session_start")?.({}, { mode: "tui", ui: { theme } });
 
-	const sampleLocation = join(homedir(), ".agents", "skills", "think", "SKILL.md");
-	const sampleContent = "Turns rough ideas into approved plans before coding.\n\n## Phase 1: Explore\n- Step A\n- Step B";
 	const block = {
 		name: "think",
-		location: sampleLocation,
-		content: sampleContent,
+		location: join(homedir(), ".agents", "skills", "think", "SKILL.md"),
+		content: "Turns rough ideas into approved plans before coding.\n\n## Phase 1: Explore\n- Step A\n- Step B",
 		userMessage: "help me plan",
 	};
-
+	const tokens = Math.round(block.content.length / 4);
 	const component = new SkillInvocationMessageComponent(block);
 
-	// 1. Collapsed state assertions
 	assert.equal(component.expanded, false);
-	const collapsedLines = component.render(120);
-	assert.equal(collapsedLines.length, 1, "collapsed badge renders as exactly one line without empty padding rows");
-	assert.equal(component.paddingY, 0, "paddingY is reset to 0 in collapsed state");
-	assert.equal(component.paddingX, 0, "paddingX is reset to 0 in collapsed state");
+	const collapsed = component.render(120);
+	assert.equal(collapsed.length, 1, "collapsed badge occupies exactly one row");
+	assert.equal(component.paddingY, 0);
+	assert.equal(component.paddingX, 0);
+	assertNoFrame(collapsed);
+	assert.equal(plain(collapsed[0]).trimEnd(), `▸ 💡 SKILL  think · ≈${tokens} tokens`);
+	assert(!plain(collapsed[0]).includes("SKILL.md"), "location is hidden until expanded");
+	assert(!plain(collapsed[0]).includes("lines"), "line count is hidden until expanded");
+	assert(collapsed[0].includes(theme.bold(theme.fg("syntaxVariable", "▸ 💡 SKILL"))), "teal invocation label is bold");
+	assert(collapsed[0].includes(theme.bold(theme.fg("text", "think"))), "skill name is bold primary text");
+	assert(collapsed[0].includes(theme.fg("muted", ` · ≈${tokens} tokens`)), "estimated tokens are muted");
+	assert(collapsed[0].includes("\u001b[48;2;"), "header has a theme-native background");
 
-	const collapsedText = plain(collapsedLines[0]);
-	assert(!collapsedText.includes("╭─"), "collapsed badge does not have corner bracket ╭─");
-	assert(!collapsedText.includes("─╮"), "collapsed badge does not have corner bracket ─╮");
-	assert(collapsedText.startsWith("──"), "collapsed badge starts with flat rule ──");
-	assert(collapsedText.trimEnd().endsWith("──"), "collapsed badge ends with flat rule ──");
-	assert(collapsedLines[0].includes("\u001b[48;2;"), "collapsed badge has subtle customMessageBg background");
-	assert(collapsedText.includes("⚡ Skill: 💡 think"), "contains skill name with glyph");
-	assert(collapsedText.includes("tokens"), "contains estimated tokens");
-	assert(collapsedText.includes("5 lines"), "contains line count");
-	assert(collapsedText.includes("~/.agents/skills/think/SKILL.md"), "contains shortened home path");
-	assert(collapsedText.includes("[▾ expand]"), "contains expand action hint");
-
-	// Pipeline badge format
-	const pipeBlock = { name: "think ➔ work", location: "Pipeline: think ➔ work", content: "Stage 1\nStage 2", userMessage: "test" };
-	const pipeComp = new SkillInvocationMessageComponent(pipeBlock);
-	const pipeText = plain(pipeComp.render(120)[0]);
-	assert(pipeText.includes("⚡ Pipeline: 💡 think ➔ work"), "pipeline badge has pipeline prefix");
-	assert(!pipeText.includes("╭─"));
-	assert(pipeComp.render(120)[0].includes("\u001b[48;2;"));
-
-	// Responsive truncation at different widths
-	for (const width of [120, 80, 50, 30]) {
-		const rendered = component.render(width);
-		assert.equal(rendered.length, 1);
-		assert(visibleWidth(rendered[0]) <= width, `collapsed line fits within width ${width}`);
-	}
-
-	// 2. Mouse click toggles to expanded state
-	const handledExpand = component.handleMouse({ type: "click", button: "left", x: 2, y: 0 });
-	assert(handledExpand?.handled, "click on collapsed badge expands it");
-	assert.equal(component.expanded, true, "component is now expanded");
-
-	// 3. Expanded state assertions
-	const expandedLines = component.render(120);
-	assert(expandedLines.length >= 6, "expanded panel renders header, metadata, separator, body, and footer");
-
-	const topRow = plain(expandedLines[0]);
-	assert(topRow.includes("╭─"), "has top-left border curve");
-	assert(topRow.includes("⚡ Skill: 💡 think"), "has skill title in header");
-	assert(topRow.includes("[▴ collapse]"), "has collapse hint in header");
-
-	const metaRow = plain(expandedLines[1]);
-	assert(metaRow.includes("📍 ~/.agents/skills/think/SKILL.md"), "has location metadata");
-	assert(metaRow.includes("5 lines"), "has line count metadata");
-
-	const sepRow = plain(expandedLines[2]);
-	assert(sepRow.includes("├─"), "has middle divider row");
-
-	const bodyText = expandedLines.slice(3, -1).map(plain).join("\n");
-	assert(bodyText.includes("Turns rough ideas into approved plans"), "body renders markdown content");
-	assert(bodyText.includes("Phase 1: Explore"), "body renders headings and list items");
-
-	const bottomRow = plain(expandedLines.at(-1));
-	assert(bottomRow.includes("╰─"), "has bottom border curve");
-
-	for (const width of [120, 80, 50]) {
-		const rendered = component.render(width);
-		for (const line of rendered) {
-			assert(visibleWidth(line) <= width, `expanded line fits within width ${width}`);
-		}
-	}
-
-	// 4. Mouse click toggles back to collapsed state
-	const handledCollapse = component.handleMouse({ type: "click", button: "left", x: 2, y: 0 });
-	assert(handledCollapse?.handled, "click on expanded panel collapses it");
-	assert.equal(component.expanded, false, "component is collapsed again");
-	assert.equal(component.render(120).length, 1, "collapsed back to 1 line");
-
-	// 5. Programmatic setExpanded (Ctrl+O keybinding support)
-	component.setExpanded(true);
+	assert.equal(click(component, "right"), undefined, "right click does not toggle");
+	assert.equal(component.expanded, false);
+	assert(click(component)?.handled, "left click expands badge");
 	assert.equal(component.expanded, true);
-	assert(component.render(120).length >= 6);
+	const expanded = component.render(120);
+	assertNoFrame(expanded);
+	assert.equal(plain(expanded[0]).trimEnd(), `▾ 💡 SKILL  think · ≈${tokens} tokens`);
+	assert.equal(plain(expanded[1]).trimEnd(), "  ~/.agents/skills/think/SKILL.md · 5 lines");
+	assert(expanded[1].includes(theme.fg("dim", "  ~/.agents/skills/think/SKILL.md · 5 lines")), "location metadata is dim");
+	assert.equal(plain(expanded[2]).trim(), "", "one blank row separates metadata from instructions");
+	const body = expanded.slice(3).map(plain).join("\n");
+	assert(body.includes("  Turns rough ideas into approved plans"), "Markdown content stays indented");
+	assert(body.includes("Phase 1: Explore"));
+	assert(body.includes("Step A"));
 
-	component.setExpanded(false);
+	assert(click(component)?.handled, "left click collapses badge");
 	assert.equal(component.expanded, false);
 	assert.equal(component.render(120).length, 1);
+	component.setExpanded(true);
+	assert.equal(component.expanded, true, "native Ctrl+O expansion API is preserved");
+	assert(component.render(120).length > 3);
+	component.setExpanded(false);
+	assert.equal(component.render(120).length, 1);
 
-	// 6. Graceful handling of empty/unusual content
-	const minimalBlock = {
-		name: "bare",
-		location: "/var/tmp/SKILL.md",
-		content: "",
-		userMessage: undefined,
-	};
-	const minimalComp = new SkillInvocationMessageComponent(minimalBlock);
-	assert.equal(minimalComp.render(80).length, 1);
-	assert(plain(minimalComp.render(80)[0]).includes("💡 bare"));
+	// Labels must remain consistent in collapsed AND expanded pipelines.
+	for (const name of ["think ➔ work", "think -> work"]) {
+		const pipe = new SkillInvocationMessageComponent({ ...block, name, location: `Pipeline: ${name}` });
+		assert(plain(pipe.render(120)[0]).startsWith(`▸ 💡 PIPELINE  ${name}`));
+		pipe.setExpanded(true);
+		assert(plain(pipe.render(120)[0]).startsWith(`▾ 💡 PIPELINE  ${name}`));
+		assertNoFrame(pipe.render(120));
+	}
 
-	console.log(`PASS ${themeName}: 1-line collapsed badge, token & line metadata, responsive widths, mouse click toggle, expanded header/meta/body/footer, programmatic setExpanded`);
+	// Narrow terminals drop token metadata before truncating the skill name.
+	assert.equal(plain(component.render(20)[0]).trimEnd(), "▸ 💡 SKILL  think");
+	for (const unusual of [
+		block,
+		{ ...block, name: "技能-💡-e\u0301-".repeat(12), location: "/var/tmp/" + "path/".repeat(25) + "SKILL.md" },
+		{ ...block, name: "bare", location: "", content: "" },
+	]) {
+		const responsive = new SkillInvocationMessageComponent(unusual);
+		for (const expanded of [false, true]) {
+			responsive.setExpanded(expanded);
+			for (const width of [1, 2, 3, 4, 8, 20, 30, 50, 80, 120]) {
+				const lines = responsive.render(width);
+				if (!expanded) assert.equal(lines.length, 1);
+				for (const line of lines) assert(visibleWidth(line) <= width, `line fits ${width} columns (${themeName}, expanded=${expanded})`);
+			}
+		}
+	}
+	const bare = new SkillInvocationMessageComponent({ ...block, name: "bare", content: "", location: "" });
+	assert(plain(bare.render(80)[0]).includes("≈0 tokens"));
+	bare.setExpanded(true);
+	assert.equal(plain(bare.render(80)[1]).trim(), "0 lines", "missing location has no dangling separator");
+
+	// Theme invalidation refreshes colors without losing expansion state.
+	const otherTheme = getThemeByName(themeName === "dark" ? "light" : "dark");
+	component.setExpanded(true);
+	setActiveTheme(otherTheme);
+	component.invalidate();
+	assert.equal(component.expanded, true);
+	assert(component.render(120)[0].includes(otherTheme.bold(otherTheme.fg("syntaxVariable", "▾ 💡 SKILL"))));
+	setActiveTheme(theme);
+	component.invalidate();
+
+	console.log(`PASS ${themeName}: compact styled header, borderless expansion, pipelines, narrow/Unicode/empty content, mouse & Ctrl+O, theme invalidation`);
 }
+
+// Extension reload should replace a stale hook, not keep the previous renderer.
+const proto = SkillInvocationMessageComponent.prototype;
+const original = proto._origUpdateDisplay;
+proto.updateDisplay = () => { throw new Error("stale renderer survived reload"); };
+installSkillBadgeHook();
+assert.equal(proto._origUpdateDisplay, original, "reload preserves Pi's original fallback renderer");
+const reloaded = new SkillInvocationMessageComponent({ name: "reload", location: "", content: "", userMessage: "" });
+assert(plain(reloaded.render(80)[0]).startsWith("▸ 💡 SKILL  reload"));
+console.log("PASS reload: stale render hook replaced without stacking patches");
