@@ -1,0 +1,22 @@
+{
+  "provider": "typesafe",
+  "model": "jev-latest",
+  "allowRemoteDecisions": false,
+  "auto": false,
+  "compactAtPercent": 60,
+  "keepThreshold": 0.5,
+  "preserveRecentMessages": 6,
+  "minReductionRatio": 0.25,
+  "truncateHeadChars": 300,
+  "truncateTailChars": 150,
+  "maxStateTokens": 12000,
+  "maxRequestTokens": 28000,
+  "maxRequestBytes": 256000,
+  "maxAttemptTokens": 60000,
+  "maxRequests": 4,
+  "maxQuestions": 64,
+  "concurrency": 2,
+  "timeoutMs": 10000,
+  "cooldownMs": 60000,
+  "minNewTokens": 2000
+}
