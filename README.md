@@ -293,20 +293,31 @@ and the `$<name>` alias, and only rewrites the widget when the chip actually
 changes — widget writes re-render the transcript. Use either extension or both;
 they do not conflict.
 
-**`skill-transcript-badge.ts`** — transforms Pi's bulky stock `[skill]` message box
-into a sleek, 1-line flat divider strip when collapsed and a framed structured card
-when expanded:
+**`skill-transcript-badge.ts`** — replaces Pi's stock `[skill]` message box with a
+compact invocation header, without full-width divider rules or frames:
 
 ```text
-── ⚡ Skill: 💡 think ────── 3.8k tokens · 142 lines · ~/.agents/skills/think/SKILL.md  [▾ expand] ──
+▸ 💡 SKILL  think · ≈3.8k tokens
 ```
 
-When collapsed, removes top/bottom padding to occupy a single terminal row, displaying
-a flat divider bar on a subtle `customMessageBg` background that contrasts gently
-with the conversation surface (without bulky corner brackets). When expanded with mouse
-click or `Ctrl+O`, encloses the skill content into a framed card with location metadata,
-clean syntax-colored instruction body, and rounded border framing. Multi-skill pipelines
-render as `── ⚡ Pipeline: 💡 think ➔ work ──`.
+The invocation label is bold teal (`syntaxVariable`), the skill name is bold primary
+text, and estimated tokens are muted, on a subtle theme-native `customMessageBg`
+header background. Collapsed messages occupy one row; narrow terminals omit token
+metadata before truncating the name. Token counts are estimates based on content length.
+
+Mouse click or `Ctrl+O` expands the message without adding a border:
+
+```text
+▾ 💡 SKILL  think · ≈3.8k tokens
+  ~/.agents/skills/think/SKILL.md · 142 lines
+
+  Skill instructions rendered as Markdown…
+```
+
+Location and line count are dim and visible only when expanded. Pipelines use
+`▸ 💡 PIPELINE  think ➔ work · ≈3.8k tokens`, preserving the label when expanded.
+Run `/reload` after updating the extension; the renderer hook is replaced rather
+than retaining an older installed version.
 
 **`transcript-summary-cards.ts`** — redesigns Pi's stock `[compaction]` and `[branch]`
 message blocks. Eliminates the bulky filled purple box and replaces it with a clean 1-line flat
