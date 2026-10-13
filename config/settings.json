@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "1.0.3",
+  "lastChangelogVersion": "1.2.0",
   "theme": "system",
   "tuiMode": "fullscreen",
   "hideThinkingBlock": true,
@@ -14,28 +14,8 @@
     "npm:@juicesharp/rpiv-todo",
     "npm:pi-diff-review@0.1.27",
     "npm:pi-lsp-extension@1.4.0",
-    {
-      "source": "git:github.com/mitsuhiko/agent-stuff@0865c849befd2021490679f96a8dee58c84ac857",
-      "extensions": [
-        "extensions/btw.ts",
-        "extensions/session-breakdown.ts",
-        "extensions/goal.ts",
-        "extensions/subagent.ts"
-      ],
-      "skills": [
-        "skills/librarian",
-        "skills/summarize"
-      ],
-      "themes": [
-        "themes/dayowl.json",
-        "themes/modern-dark.json",
-        "themes/nightowl.json"
-      ],
-      "prompts": []
-    },
     "npm:pi-memory",
     "npm:@tmustier/pi-session-recap",
-    "npm:pi-smart-fetch",
     "npm:pi-browser-use",
     "npm:pi-simplify",
     "npm:pi-mcp-adapter",
@@ -43,7 +23,8 @@
     "npm:@latentminds/pi-quotas",
     "npm:pi-cache-optimizer",
     "npm:pi-context-view",
-    "npm:pi-devin-local"
+    "npm:pi-subagents@0.77.0",
+    "npm:@narumitw/pi-goal"
   ],
   "terminal": {
     "imageWidthCells": 60
@@ -51,8 +32,8 @@
   "images": {
     "blockImages": true
   },
-  "defaultProvider": "devin",
-  "defaultModel": "deepseek-v4.1-flash",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-6.1-sol",
   "defaultThinkingLevel": "high",
   "extensions": [
     "-builtin:mcp"

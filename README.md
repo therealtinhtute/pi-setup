@@ -35,6 +35,21 @@ Your live `settings.json` and `web-search.json` are **never clobbered** on a
 re-run — the script prints a unified diff and leaves the decision to you. Pass
 `--force` to overwrite anyway (a backup is still taken).
 
+## Machine → repo sync
+
+The shared config was synced from the current machine on 2026-10-13 (Pi 1.2.0).
+`config/settings.json` matches the live configuration. Plugins and packages uninstalled
+on the machine have been removed from the repository (`pi-devin-local`, `agent-stuff`,
+`pi-advisor-flow`, `pi-smart-fetch`, `pi-permission-system`, `pi-extension`), along with
+uninstalled extension scripts/configs (`decision-compact.ts`, Devin client patch,
+`advisor.json`). Newly installed packages on the machine (`@narumitw/pi-goal`,
+`pi-subagents@0.77.0`) are synced into the template. The default model is
+`openai-codex/gpt-6.1-sol` with high thinking.
+
+Orca-generated `orca-*` extensions stay machine-local and are managed by Orca.
+Do not copy credentials, sessions, caches, trust decisions, browser profiles,
+or installed package directories into this repo.
+
 ## The secrets pattern
 
 Pi reads provider credentials from `process.env`. That breaks the moment you
@@ -151,96 +166,6 @@ Config file: `~/.pi/agent/web-search.json`.
 > requests with HTTP 403. If that happens, a key is mandatory.
 
 ## Extensions
-
-**`decision-compact.ts`** — decision-model pruning for **Pi 1.1.0+**. It keeps
-user/assistant prose verbatim and asks a classifier which eligible tool pairs to
-keep, truncate, or drop. Edits only affect future model context; original
-messages, exports, and chat billing remain intact. Native `/compact` is unchanged.
-
-Load it explicitly for a trial, without installing globally:
-
-```bash
-pi --extension ./extensions/decision-compact.ts
-```
-
-Create `<agent-dir>/decision-compact.json` (normally `~/.pi/agent/decision-compact.json`)
-from `config/decision-compact.example.json`, or write this minimal opt-in:
-
-```json
-{
-  "provider": "typesafe",
-  "model": "jev-latest",
-  "allowRemoteDecisions": true,
-  "auto": false
-}
-```
-
-**Opting in sends conversational text, file paths, tool arguments, and output
-excerpts to the selected classifier provider.** No redaction guarantee is made.
-The installer does not copy this config or enable remote calls. Missing config
-means no classifier calls. Trusted `.pi/decision-compact.json` can override the
-model and policy, but cannot grant consent without the user-level opt-in.
-Config is read on each command/attempt; keys, URLs, shell commands, and unknown
-fields are rejected. Keep credentials in Pi's normal auth store or environment.
-The example's `allowRemoteDecisions` is deliberately `false`.
-
-| Provider | Model | Credentials |
-| :--- | :--- | :--- |
-| `typesafe` (default) | `jev-latest` | `TYPESAFE_API_KEY` |
-| `opencode` | `jev-1.13` or `jev-1.13-free` | `OPENCODE_API_KEY` |
-| `cloudflare-workers-ai` | `@cf/cloudflare/clef` or `@cf/cloudflare/clef-flash` | `CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` |
-
-Other registered Pi classifier models use the same `provider`/`model` config.
-Lookup stays exact: there is no automatic cross-provider or free-model fallback.
-A standalone custom decision API needs a Pi classifier provider registration.
-Codemode is not required, and the main chat model is not changed.
-
-- `/decision-compact preview`: calls the classifier and reports a proposal;
-  does not apply edits. **Preview is not offline.**
-- `/decision-compact apply`: arms branch-scoped pruning for the next completed
-  `turn_end`, after the next prompt. It does not apply immediately while idle
-  and does not create an extra chat turn.
-- `/decision-compact cancel`: cancels pending/in-flight work.
-- `/decision-compact status`: shows the queue, last outcome, proposal estimates,
-  and classifier usage. Commit is verified against persisted edits; later
-  overrides are reported rather than presented as successful pruning.
-
-For auto mode, explicitly set `auto: true`; the initial watermark is 60%.
-Cooldown and new-material checks prevent repeated attempts on unchanged context.
-Requests are bounded by question count, estimated tokens, bytes, concurrency,
-requests per attempt, and a hard deadline. Transport retries are disabled.
-Default acceptance requires at least 25% estimated context-token reduction.
-
-Safety is conservative. Recent endpoints, failed/incomplete pairs, images,
-opaque provider signatures, unknown tools, and non-reconstructible effects are
-pinned. Native `edit`/`write` additionally require their exact execution receipt
-in surviving assistant prose. **Old tool history without this extension's
-execution-time provenance is pinned**, even if today's tool has the same name.
-Start the extension before the tool work you want it to prune; provenance
-survives resume/fork with the branch. Signed-model histories may produce no
-eligible pairs. Full conversational prose must fit the classifier evidence
-budget; oversized history is skipped, never silently clipped by the server.
-
-On failure or insufficient savings, context is retained; Pi's normal threshold/
-overflow compaction remains available. Use `/compact` manually if needed.
-Classifier usage is reported separately because public boundary drafts cannot
-append native usage entries. Unverified zero catalog pricing is shown as unknown;
-only the explicitly selected OpenCode free model accepts its zero catalog estimate,
-which is not a promise of future availability or pricing. No live speed, quality,
-or total-cost improvements have been measured.
-
-Offline verification:
-
-```bash
-node tests/test-decision-compact.mjs
-node tests/test-decision-compact-core.mjs
-node tests/test-decision-compact-runtime.mjs
-npm exec --package=typescript@5.9.3 -- node scripts/typecheck-decision-compact.mjs
-```
-
-The tests never contact a classifier. The static-check command may download
-TypeScript through npm; to stay offline, set `PI_TYPESCRIPT` to an existing
-TypeScript package directory. `PI_NODE_MODULES` overrides the Pi install layout.
 
 **`custom-banner.ts`** — replaces the default TUI header with a gradient
 TINHTUTE banner. Centers and truncates using terminal display widths, with a
@@ -458,57 +383,6 @@ After installing, run `/reload` in Pi to check both components visually.
 `config/settings.json` lists the Pi packages this setup expects. Trim the list
 to what you actually use; Pi resolves configured packages on startup.
 
-### Devin provider
-
-- `npm:pi-devin-local`: registers Devin as a native Pi provider while the
-  local Devin CLI owns authentication and the live model catalog. Pi remains
-  the agent harness for tools, sessions, and UI.
-- Install the Devin CLI first (`curl -fsSL https://cli.devin.ai/install.sh | bash`),
-  sign in with `devin auth login`, then run `/reload` and `/login devin` inside Pi.
-- Do not install `git:github.com/ttttmr/pi-devin-oauth` at the same time: both
-  packages register the `devin` provider. The template keeps `pi-devin-local`
-  for CLI authentication and the live catalog. Version 0.3.0 still sends a
-  fixed Desktop client identity; see the compatibility fix below.
-- `defaultProvider`/`defaultModel` select `devin/deepseek-v4.1-flash`; change
-  them if this machine should start on another provider.
-
-#### Temporary client identity fix (pi-devin-local 0.3.0)
-
-If Pi reports “Your Windsurf version is out of date” while the native Devin CLI
-gets past that check, run:
-
-```bash
-node scripts/patch-devin-client.mjs --dry-run
-node scripts/patch-devin-client.mjs
-node scripts/patch-devin-client.mjs --check
-```
-
-The script targets `~/.pi/agent/npm/node_modules/pi-devin-local` (or
-`PI_CODING_AGENT_DIR`; `--package-dir` overrides the whole package path). It
-accepts only the exact published 0.3.0 metadata source, backs it up as
-`src/metadata.ts.pi-setup-backup`, and changes only client metadata. The fix
-uses the observed Devin CLI 3000.11.3 chat identity: `devin-cli`, version
-`3000.11.3`, and `chisel` in the extension identity fields. It does not read
-credentials or change authentication, models, tools, or quotas. The version
-is a verified default, **not** automatic CLI-version discovery;
-`DEVIN_CLIENT_VERSION` can override it with a `major.minor.patch` value.
-`--check` verifies the local patch, **not** the live server's version gate. If
-the gate changes again, compare native CLI **GetChatMessage** metadata fields
-1, 2, 7, 12 and 28; catalog/status RPCs can use different identities. Capture
-only those identity fields, never credentials, JWTs or complete request bodies.
-This is an unofficial compatibility workaround, not an upstream-supported
-integration; check your provider's terms before applying.
-
-Restart Pi or run `/reload`. Bootstrap only copies the script and prints this
-manual step; it does not patch packages automatically. Reapply after package
-updates/reinstalls if the original 0.3.0 source returns. Newer or modified
-sources are refused and need review, not a forced patch. To roll back, copy
-`src/metadata.ts.pi-setup-backup` over `src/metadata.ts`, then reload.
-
-Regression check: `node tests/test-devin-client.mjs`. On this account, SWE-2
-returned `OK` after the patch; DeepSeek and Sol passed the version gate but
-reported daily quota exhaustion. That remaining quota error is not fixed by
-changing client metadata.
 
 ### Browser executable
 
@@ -525,24 +399,6 @@ your machine-local settings, not in the shared template. Re-running the installe
 without `--force` does not migrate existing settings; do not use `--force` just
 for this change. Restart Pi or run `/reload` after editing.
 
-### Smart-fetch dependency warning
-
-`pi-smart-fetch@0.3.17` declares `@earendil-works/pi-tui` and
-`@sinclair/typebox` as runtime dependencies, although Pi supplies these modules.
-Pi reports this as a package warning, separate from browser startup failures.
-
-Until an upstream release fixes the manifest, a temporary local workaround is
-to back up `<agent-dir>/npm/node_modules/pi-smart-fetch/package.json`, remove
-only those two entries from `dependencies`, and add them to `peerDependencies`
-with `"*"` ranges. Preserve the other dependencies and package fields. Do not
-delete shared `node_modules` or patch Pi's extension loader. This bootstrap does
-not apply the workaround automatically.
-
-Restart Pi or run `/reload`, confirm the warning is absent and `web_fetch` still
-works. The manifest change alone does not prove module-instance identity.
-Package updates/reinstalls can overwrite this local workaround; recheck the
-installed manifest afterward. Restore the backed-up manifest to roll it back.
-
 ### Diff review and LSP
 
 - `npm:pi-diff-review@0.1.27`: `/diff`, `/diff --cached`, `/diff main...HEAD`,
@@ -554,54 +410,16 @@ installed manifest afterward. Restore the backed-up manifest to roll it back.
 
 These versions are pinned to the releases tested with Pi 1.0.4.
 
-### Selected mitsupi resources
+### Parallel subagents and goals
 
-The npm release checked during setup did not contain `goal.ts`, `subagent.ts`,
-or all three themes. This template uses the GitHub source pinned to a tested
-commit, with resource filters rather than enabling the whole bundle:
+- `npm:pi-subagents@0.77.0`: parallel/background delegation and FleetView.
+  Use `/subagents-fleet` to inspect runs. Keep only one subagent implementation
+  enabled.
+- `npm:@narumitw/pi-goal`: the selected standalone goal package, replacing the
+  previous filtered `agent-stuff` goal extension.
 
-```json
-{
-  "source": "git:github.com/mitsuhiko/agent-stuff@0865c849befd2021490679f96a8dee58c84ac857",
-  "extensions": [
-    "extensions/btw.ts",
-    "extensions/session-breakdown.ts",
-    "extensions/goal.ts",
-    "extensions/subagent.ts"
-  ],
-  "skills": ["skills/librarian", "skills/summarize"],
-  "themes": [
-    "themes/dayowl.json",
-    "themes/modern-dark.json",
-    "themes/nightowl.json"
-  ],
-  "prompts": []
-}
-```
-
-- `/btw`: side-chat popover for tangential questions.
-- `/session-breakdown`: session usage, model, and cost analysis.
-- `/goal`: long-running objectives; use it explicitly rather than starting a
-  goal for every ordinary task.
-- `subagent` tool: one observable child Pi session at a time, backed by `tmux`.
-  Install `tmux` separately. The two legacy npm subagent packages are removed
-  from this template to avoid duplicate `subagent` registrations.
-- `/skill:librarian`: reusable remote repository checkouts.
-- `/skill:summarize`: document/URL-to-Markdown conversion through `uvx markitdown`.
-  Install `uv` separately. Its optional AI summary wrapper defaults to
-  `claude-haiku-4-5`, which needs an available model/account.
-- `dayowl`, `modern-dark`, `nightowl`: choose one in `/settings`. Merely installing
-  them leaves the current `system` theme unchanged.
-
-All other mitsupi extensions, skills, and prompt templates are excluded. In
-particular, this selection does not enable its tool replacements or auto-trust
-extension. Review third-party package source before installing it.
-
-For an existing installation, merge the package entries from the template into
-`~/.pi/agent/settings.json`, remove any legacy subagent packages, and run `/reload`.
-Do not run the installer with `--force` unless you intend to replace the whole
-settings file. Updating pinned packages requires deliberately changing their
-version or commit.
+Restart Pi or run `/reload` after changing the package selection. Provider-backed
+delegation needs a separate end-to-end check; configuration sync does not prove it.
 
 ## Layout
 
@@ -618,9 +436,12 @@ pi-setup/
 │   ├── custom-footer.ts
 │   ├── dollar-skill.ts
 │   ├── skill-highlight-editor.ts
-│   └── skill-invoke-chip.ts
+│   ├── skill-invoke-chip.ts
+│   ├── skill-transcript-badge.ts
+│   └── transcript-summary-cards.ts
 ├── scripts/
-│   └── get-secret.sh
+│   ├── get-secret.sh
+│   └── test-custom-footer.mjs
 ├── setup/
 │   └── install.sh
 └── tests/
@@ -630,6 +451,8 @@ pi-setup/
     ├── test-package-selection.mjs
     ├── test-skill-highlight.mjs
     ├── test-skill-invoke-chip.mjs
+    ├── test-skill-transcript-badge.mjs
+    ├── test-transcript-summary-cards.mjs
     └── test-web-search-config.mjs
 ```
 
@@ -646,7 +469,8 @@ pi-setup/
 Skills live in a separate tree (`~/.agents/skills`, symlinked into
 `~/.pi/agent/skills`) and are mostly third-party installs. Neither is versioned
 here. Sessions, caches, the browser profile, `auth.json`, `antigravity-accounts.json`,
-and `models-store.json` are machine-local state and are gitignored.
+and `models-store.json` are machine-local state and are gitignored. Orca manages
+its generated `orca-*` extensions separately; they are not copied into this repo.
 
 ## Uninstall
 
@@ -655,12 +479,13 @@ Remove what was installed:
 ```bash
 rm ~/.pi/agent/extensions/code-block.ts
 rm ~/.pi/agent/extensions/compact-tools.ts
-rm ~/.pi/agent/extensions/decision-compact.ts
 rm ~/.pi/agent/extensions/custom-banner.ts
 rm ~/.pi/agent/extensions/custom-footer.ts
 rm ~/.pi/agent/extensions/dollar-skill.ts
 rm ~/.pi/agent/extensions/skill-highlight-editor.ts
 rm ~/.pi/agent/extensions/skill-invoke-chip.ts
+rm ~/.pi/agent/extensions/skill-transcript-badge.ts
+rm ~/.pi/agent/extensions/transcript-summary-cards.ts
 rm ~/.pi/agent/scripts/get-secret.sh
 ```
 
