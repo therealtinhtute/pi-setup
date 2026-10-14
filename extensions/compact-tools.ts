@@ -1,4 +1,12 @@
-import { createReadToolDefinition, getLanguageFromPath, highlightCode, Theme, ToolExecutionComponent, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	createReadToolDefinition,
+	getLanguageFromPath,
+	highlightCode,
+	Theme,
+	ToolExecutionComponent,
+	UserMessageComponent,
+	type ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import { numberlessDiff, renderWithCodeBlockPaint, toolCodeBlock, type ToolRenderContext } from "./code-block.ts";
 import { backgroundAnsi, Box, Container, mixColors, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 
@@ -147,6 +155,178 @@ function bordered(content: Component, theme: Theme): Component {
 	};
 }
 
+// ============================================================================
+// Prompt Run & OpenCode State Tracking
+// ============================================================================
+
+interface ToolCallEntry {
+	id: string;
+	name: string;
+	args: Record<string, unknown>;
+	isError?: boolean;
+	isPartial?: boolean;
+	executionStarted?: boolean;
+	durationMs?: number;
+}
+
+interface PromptRunState {
+	id: number;
+	startTime: number;
+	endTime?: number;
+	thoughtCount: number;
+	tools: ToolCallEntry[];
+	expanded: boolean;
+	completed: boolean;
+}
+
+const promptRuns = new Map<number, PromptRunState>();
+const toolCallToPromptRun = new Map<string, PromptRunState>();
+const componentByToolCallId = new Map<string, ToolExecutionComponent>();
+let currentActiveRun: PromptRunState | null = null;
+let promptRunCounter = 0;
+let compactMode: "opencode" | "lines" = (process.env.COMPACT_TOOLS_STYLE as "opencode" | "lines") || "opencode";
+let globalTheme: Theme | null = null;
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+function invalidateLeader(run: PromptRunState | null): void {
+	if (!run || run.tools.length === 0) return;
+	const leaderId = run.tools[0].id;
+	const leaderComp = componentByToolCallId.get(leaderId);
+	leaderComp?.invalidate();
+}
+
+function renderOpenCodeSummary(run: PromptRunState, theme: Theme, expanded: boolean): string {
+	const cmdCount = run.tools.length;
+	const thoughtCount = run.thoughtCount;
+	const failedCount = run.tools.filter((t) => t.isError).length;
+	// Pick the currently active running tool (last one executing)
+	const runningTool = [...run.tools].reverse().find((t) => t.isPartial && t.executionStarted);
+
+	const cmdText = cmdCount === 1 ? "1 command" : `${cmdCount} commands`;
+	const failedText = failedCount > 0 ? " " + theme.fg("error", `(${failedCount} failed)`) : "";
+	const thoughtText = thoughtCount > 0 ? `, ${thoughtCount === 1 ? "1 thought" : `${thoughtCount} thoughts`}` : "";
+
+	if (expanded) {
+		return `${theme.fg("dim", "▾")} ${theme.fg("dim", cmdText)}${failedText}${theme.fg("dim", thoughtText)}`;
+	}
+
+	if (runningTool) {
+		const spinnerChar = SPINNER_FRAMES[Math.floor(Date.now() / 80) % SPINNER_FRAMES.length];
+		return `${theme.fg("warning", spinnerChar)} ${theme.fg("dim", cmdText)}${failedText}${theme.fg("dim", thoughtText)} ${theme.fg("dim", "·")} ${theme.fg("accent", runningTool.name)}`;
+	}
+
+	return `${theme.fg("dim", "⋮")} ${theme.fg("dim", cmdText)}${failedText}${theme.fg("dim", thoughtText)}`;
+}
+
+function processAssistantMessage(message: any, run: PromptRunState | null): void {
+	if (!run || message?.role !== "assistant" || !Array.isArray(message.content)) return;
+	let thoughts = 0;
+	for (let i = 0; i < message.content.length; i++) {
+		const part = message.content[i];
+		if (part.type === "thinking") {
+			thoughts++;
+			while (i + 1 < message.content.length && message.content[i + 1].type === "thinking") i++;
+		} else if (part.type === "toolCall") {
+			toolCallToPromptRun.set(part.id, run);
+			let existing = run.tools.find((t) => t.id === part.id);
+			if (!existing) {
+				existing = { id: part.id, name: part.name, args: part.arguments ?? {} };
+				run.tools.push(existing);
+			} else {
+				existing.args = part.arguments ?? existing.args;
+			}
+		}
+	}
+	if (thoughts > 0 && thoughts > run.thoughtCount) {
+		run.thoughtCount = thoughts;
+	}
+	invalidateLeader(run);
+}
+
+function reconstructTurnsFromBranch(entries: any[]): void {
+	promptRuns.clear();
+	toolCallToPromptRun.clear();
+	let currentHistoricalRun: PromptRunState | null = null;
+	let runIdx = 0;
+
+	for (const entry of entries) {
+		if (entry.type === "message") {
+			const msg = entry.message;
+			if (msg.role === "user") {
+				currentHistoricalRun = {
+					id: ++runIdx,
+					startTime: entry.timestamp ?? Date.now(),
+					thoughtCount: 0,
+					tools: [],
+					expanded: false,
+					completed: true,
+				};
+				promptRuns.set(currentHistoricalRun.id, currentHistoricalRun);
+			} else if (msg.role === "assistant" && currentHistoricalRun) {
+				processAssistantMessage(msg, currentHistoricalRun);
+			} else if (msg.role === "toolResult" && currentHistoricalRun) {
+				const tool = currentHistoricalRun.tools.find((t) => t.id === msg.toolCallId);
+				if (tool) {
+					tool.isError = msg.isError === true;
+				}
+			}
+		}
+	}
+}
+
+// ============================================================================
+// Hooks
+// ============================================================================
+
+function installUserMessageAccentHook(): void {
+	if ((UserMessageComponent as any)?._opencodeAccentHookInstalled) return;
+	if (UserMessageComponent) (UserMessageComponent as any)._opencodeAccentHookInstalled = true;
+
+	const origRender = UserMessageComponent?.prototype?.render;
+	if (!origRender) return;
+
+	UserMessageComponent.prototype.render = function (width: number): string[] {
+		const lines = origRender.call(this, width);
+		if (lines.length === 0 || compactMode !== "opencode") return lines;
+		const accent = "\x1b[38;2;198;120;221m▌\x1b[39m"; // Magenta accent from OpenCode v2
+		return lines.map((line) => {
+			const oscPrefixMatch = line.match(/^((?:\x1b\]133;[^\x07]*\x07)+)/);
+			const oscPrefix = oscPrefixMatch ? oscPrefixMatch[1] : "";
+			let rest = line.slice(oscPrefix.length);
+			let replaced = false;
+			rest = rest.replace(/^((?:\x1b\[[\d;]*m)*) /, (_m, esc) => {
+				replaced = true;
+				return esc + accent;
+			});
+			if (!replaced) rest = accent + rest;
+			return oscPrefix + rest;
+		});
+	};
+}
+
+function installSetExpandedHook(): void {
+	if ((ToolExecutionComponent as any)?._opencodeSetExpandedHookInstalled) return;
+	if (ToolExecutionComponent) (ToolExecutionComponent as any)._opencodeSetExpandedHookInstalled = true;
+
+	const origSetExpanded = ToolExecutionComponent?.prototype?.setExpanded;
+	if (!origSetExpanded) return;
+
+	ToolExecutionComponent.prototype.setExpanded = function (expanded: boolean): void {
+		origSetExpanded.call(this, expanded);
+		const run = toolCallToPromptRun.get((this as any).toolCallId);
+		if (compactMode === "opencode" && run && run.tools[0]?.id === (this as any).toolCallId) {
+			run.expanded = expanded;
+			for (let i = 1; i < run.tools.length; i++) {
+				const peer = componentByToolCallId.get(run.tools[i].id);
+				if (peer && (peer as any).expanded !== expanded) {
+					origSetExpanded.call(peer, expanded);
+				}
+			}
+		}
+	};
+}
+
 function installToolSpacingHook(): void {
 	if ((ToolExecutionComponent as any)?._compactSpacingHookInstalled) return;
 	if (ToolExecutionComponent) (ToolExecutionComponent as any)._compactSpacingHookInstalled = true;
@@ -179,7 +359,34 @@ function installToolSpacingHook(): void {
 
 	ToolExecutionComponent.prototype.render = function (width: number): string[] {
 		if ((this as any).hideComponent) return [];
+		componentByToolCallId.set((this as any).toolCallId, this);
+
+		const run = toolCallToPromptRun.get((this as any).toolCallId);
+		const isOpenCode = compactMode === "opencode" && run && run.tools.length > 0;
+		const isLeader = isOpenCode && run.tools[0]?.id === (this as any).toolCallId;
+		const isPeer = isOpenCode && !isLeader;
+
+		// Peers in OpenCode mode hide completely when collapsed
+		if (isPeer && !(this as any).expanded) {
+			(this as any).selfRenderHeight = 0;
+			(this as any)._hasTopSpacer = false;
+			return [];
+		}
+
 		if ((this as any).hasRendererDefinition?.() && (this as any).getRenderShell?.() === "self") {
+			// If leader and collapsed in OpenCode mode:
+			if (isLeader && !(this as any).expanded) {
+				const activeTheme = globalTheme ?? (this as any).theme;
+				const summaryLine = activeTheme ? renderOpenCodeSummary(run, activeTheme, false) : "⋮ commands";
+				const prev = (this as any)._prevVisibleSibling;
+				const isPrevCollapsedTool = prev instanceof ToolExecutionComponent && !(prev as any).expanded;
+				const hasTopSpacer = !(isPrevCollapsedTool && !(this as any).expanded);
+				(this as any)._hasTopSpacer = hasTopSpacer;
+				(this as any).selfRenderHeight = 1;
+				const line = truncateToWidth(summaryLine, Math.max(0, width));
+				return hasTopSpacer ? ["", line] : [line];
+			}
+
 			const contentLines = (this as any).selfRenderContainer.render(width);
 			(this as any).selfRenderHeight = contentLines.length;
 			if (contentLines.length === 0 && (this as any).imageComponents.length === 0) return [];
@@ -191,9 +398,19 @@ function installToolSpacingHook(): void {
 			(this as any)._hasTopSpacer = hasTopSpacer;
 
 			const lines: string[] = [];
-			if (contentLines.length > 0) {
+			// If leader and expanded in OpenCode mode: add the group header
+			if (isLeader && (this as any).expanded) {
+				const activeTheme = globalTheme ?? (this as any).theme;
+				const headerLine = activeTheme ? renderOpenCodeSummary(run, activeTheme, true) : "▾ commands";
 				if (hasTopSpacer) lines.push("");
+				lines.push(truncateToWidth(headerLine, Math.max(0, width)));
+				lines.push("");
 				lines.push(...contentLines);
+			} else {
+				if (contentLines.length > 0) {
+					if (hasTopSpacer) lines.push("");
+					lines.push(...contentLines);
+				}
 			}
 			for (let i = 0; i < (this as any).imageComponents.length; i++) {
 				const spacer = (this as any).imageSpacers[i];
@@ -207,26 +424,48 @@ function installToolSpacingHook(): void {
 	};
 
 	ToolExecutionComponent.prototype.handleMouse = function (event: any): any {
+		const run = toolCallToPromptRun.get((this as any).toolCallId);
+		const isOpenCode = compactMode === "opencode" && run && run.tools.length > 0;
+		const isLeader = isOpenCode && run.tools[0]?.id === (this as any).toolCallId;
+
+		if (isLeader && event.type === "click" && event.button === "left") {
+			const offset = (this as any)._hasTopSpacer ? 1 : 0;
+			if (event.y === offset) {
+				(this as any).setExpanded(!(this as any).expanded);
+				return { handled: true };
+			}
+		}
+
 		if (!(this as any).hasRendererDefinition?.() || (this as any).getRenderShell?.() !== "self") {
 			return origHandleMouse.call(this, event);
 		}
 		const offset = (this as any)._hasTopSpacer ? 1 : 0;
-		if (event.y < offset || event.y >= (this as any).selfRenderHeight + offset) return undefined;
+		const headerOffset = isLeader && (this as any).expanded ? 2 : 0;
+		const totalOffset = offset + headerOffset;
+		if (event.y < totalOffset || event.y >= (this as any).selfRenderHeight + totalOffset) return undefined;
 		return (this as any).selfRenderContainer.handleMouse({
 			...event,
-			y: event.y - offset,
+			y: event.y - totalOffset,
 			height: (this as any).selfRenderHeight,
 		});
 	};
 }
 
+// ============================================================================
+// Extension Entry Point
+// ============================================================================
+
 export default function (pi: ExtensionAPI) {
+	installUserMessageAccentHook();
+	installSetExpandedHook();
 	installToolSpacingHook();
+
 	pi.registerToolRenderer((toolName, next) => {
 		const original = next();
 		return {
 			renderShell: "self",
 			renderCall(args, theme, context) {
+				globalTheme = theme;
 				const marker = context.expanded ? "▾" : "▸";
 				const color = context.isError ? "error" : context.isPartial ? "warning" : "success";
 				const detail = summary(args as Record<string, unknown>, toolName);
@@ -239,6 +478,7 @@ export default function (pi: ExtensionAPI) {
 				};
 			},
 			renderResult(result, options, theme, context) {
+				globalTheme = theme;
 				if (!options.expanded) return EMPTY;
 				const native = nativeState(context);
 				const args = context.args as Record<string, unknown>;
@@ -289,7 +529,106 @@ export default function (pi: ExtensionAPI) {
 		};
 	});
 
+	pi.on("agent_start", () => {
+		currentActiveRun = {
+			id: ++promptRunCounter,
+			startTime: Date.now(),
+			thoughtCount: 0,
+			tools: [],
+			expanded: false,
+			completed: false,
+		};
+		promptRuns.set(currentActiveRun.id, currentActiveRun);
+	});
+
+	pi.on("turn_start", () => {
+		if (!currentActiveRun) {
+			currentActiveRun = {
+				id: ++promptRunCounter,
+				startTime: Date.now(),
+				thoughtCount: 0,
+				tools: [],
+				expanded: false,
+				completed: false,
+			};
+			promptRuns.set(currentActiveRun.id, currentActiveRun);
+		}
+	});
+
+	pi.on("message_update", (event) => {
+		processAssistantMessage(event.message, currentActiveRun);
+	});
+
+	pi.on("message_end", (event) => {
+		processAssistantMessage(event.message, currentActiveRun);
+	});
+
+	pi.on("tool_execution_start", (event) => {
+		const run = toolCallToPromptRun.get(event.toolCallId) ?? currentActiveRun;
+		if (run) {
+			let tool = run.tools.find((t) => t.id === event.toolCallId);
+			if (!tool) {
+				tool = { id: event.toolCallId, name: event.toolName, args: event.args ?? {} };
+				run.tools.push(tool);
+				toolCallToPromptRun.set(event.toolCallId, run);
+			}
+			tool.executionStarted = true;
+			tool.isPartial = true;
+			invalidateLeader(run);
+		}
+	});
+
+	pi.on("tool_execution_end", (event: any) => {
+		const run = toolCallToPromptRun.get(event.toolCallId) ?? currentActiveRun;
+		if (run) {
+			const tool = run.tools.find((t) => t.id === event.toolCallId);
+			if (tool) {
+				tool.isPartial = false;
+				if (event.isError) tool.isError = true;
+				if (event.durationMs) tool.durationMs = event.durationMs;
+			}
+			invalidateLeader(run);
+		}
+	});
+
+	pi.on("agent_end", () => {
+		if (currentActiveRun) {
+			currentActiveRun.completed = true;
+			currentActiveRun.endTime = Date.now();
+			invalidateLeader(currentActiveRun);
+		}
+		currentActiveRun = null;
+	});
+
+	pi.on("turn_end", () => {
+		if (currentActiveRun) {
+			invalidateLeader(currentActiveRun);
+		}
+	});
+
 	pi.on("session_start", (_event, ctx) => {
-		if (ctx.mode === "tui") ctx.ui.setToolsExpanded(false);
+		if (ctx.mode === "tui") {
+			ctx.ui.setToolsExpanded?.(false);
+			ctx.ui.setHiddenThinkingLabel?.("");
+		}
+		if ((ctx as any).sessionManager) {
+			reconstructTurnsFromBranch((ctx as any).sessionManager.getBranch());
+		}
+	});
+
+	pi.registerCommand?.("compact-mode", {
+		description: "Switch compact tool style (opencode: single summary bar, lines: individual one-line tools)",
+		handler: async (args, ctx) => {
+			const style = args.trim().toLowerCase();
+			if (style === "lines" || style === "opencode") {
+				compactMode = style as "opencode" | "lines";
+			} else {
+				compactMode = compactMode === "opencode" ? "lines" : "opencode";
+			}
+			ctx.ui.notify(`Compact mode: ${compactMode}`);
+			for (const comp of componentByToolCallId.values()) {
+				comp.invalidate();
+			}
+		},
 	});
 }
