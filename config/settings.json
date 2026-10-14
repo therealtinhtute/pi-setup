@@ -19,7 +19,6 @@
     "npm:pi-browser-use",
     "npm:pi-simplify",
     "npm:pi-mcp-adapter",
-    "npm:pi-xai-oauth",
     "npm:@latentminds/pi-quotas",
     "npm:pi-cache-optimizer",
     "npm:pi-context-view",
