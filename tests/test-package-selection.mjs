@@ -27,6 +27,7 @@ for (const inactive of [
 	"npm:pi-devin-local",
 	"npm:@gotgenes/pi-permission-system",
 	"npm:@plannotator/pi-extension",
+	"npm:pi-xai-oauth",
 ]) {
 	assert(!packageIds.includes(inactive), `${inactive} is not selected in the synced setup`);
 }
