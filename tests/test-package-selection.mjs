@@ -24,12 +24,12 @@ const expected = [
 	"npm:pi-memory",
 	"npm:pi-subagents@0.77.0",
 	"npm:@narumitw/pi-goal",
-	// Render-only (2026-10-21): pi-pigment decorates the eight built-in tool
-	// renderers and registers no tool, so it costs no tool schema.
-	"npm:pi-pigment",
-	// Under evaluation (2026-10-21): context-mode for tool-output sandboxing.
-	// It has not proven itself yet. pi-lens and pi-condense were trialled and
-	// removed the same day — see the dropped list below.
+	// On trial (2026-10-21): pi-lens adds post-edit LSP/lint/format feedback on top of
+	// pi-lsp-extension's tools, at the cost of a second LSP client pool. Java support
+	// needs scripts/install-java-lsp.sh.
+	"npm:pi-lens",
+	// On trial (2026-10-21): context-mode for tool-output sandboxing. Neither trial has
+	// proven itself yet — see the dropped list below for what already lost that bet.
 	"npm:context-mode",
 ];
 assert.deepEqual([...sources].sort(), [...expected].sort(), "the package list is exactly the tracked set");
@@ -45,8 +45,12 @@ for (const dropped of [
 	"npm:@tmustier/pi-session-recap",
 	"npm:pi-simplify",
 	"npm:pi-diff-review@0.1.27",
-	"npm:pi-lens",
 	"npm:pi-condense",
+	// pi-pigment (render-only decorators for the eight built-in tool renderers) was
+	// added to the template on 2026-10-21 and reverted on 2026-10-22. It hooks the
+	// same internal renderer surface that retired code-block.ts, and it was never
+	// installed on the machine, so the template only carried drift.
+	"npm:pi-pigment",
 ]) {
 	assert(!sources.includes(dropped), `${dropped} was trimmed and must not come back silently`);
 }
@@ -74,7 +78,7 @@ assert(!sources.some((source) => source.includes("mitsuhiko/agent-stuff") || sou
 assert(!packageIds.some((id) => /powerline|slate|pi-coder|arnative|cc-extensions|footer/.test(id)),
 	"only custom-footer.ts owns the footer; no second footer/TUI suite may be installed");
 assert.equal(settings.theme, "system");
-assert.equal(settings.lastChangelogVersion, "1.3.0");
+assert.equal(settings.lastChangelogVersion, "1.4.0");
 assert.equal(settings.defaultProvider, "opencode-go");
 assert.equal(settings.defaultModel, "deepseek-v4.1-flash");
 assert.equal(settings.defaultThinkingLevel, "high");
