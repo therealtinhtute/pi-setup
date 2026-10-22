@@ -77,14 +77,19 @@ bwrap/container execution, add a `launcher` frontmatter entry (see pi-subagents
 
 ## Machine → repo sync
 
-The shared config was last synced from the current machine on 2026-10-20 (Pi 1.3.0).
-`config/settings.json` and `config/models.json` match the live configuration. Plugins and
+The shared config was last synced from the current machine on 2026-10-22 (Pi 1.4.0).
+`config/settings.json` is byte-identical to the live file — including the missing trailing
+newline, because `install.sh` compares the two with `cmp` and Pi writes the live file
+without one — and `config/models.json` matches too. Plugins and
 packages uninstalled on the machine have been removed from the repository
 (`pi-devin-local`, `agent-stuff`, `pi-advisor-flow`, `pi-smart-fetch`,
 `pi-permission-system`, `pi-extension`, `pi-xai-oauth`), along with uninstalled extension
 scripts/configs (`decision-compact.ts`, Devin client patch, `advisor.json`). Newly
 installed packages on the machine (`@narumitw/pi-goal`, `pi-subagents@0.77.0`) are synced
-into the template. The default model is `opencode-go/deepseek-v4.1-flash` with high
+into the template, and `pi-lens` stays listed as the trial it is. `pi-pigment` was added to
+the template on 2026-10-21 and reverted on 2026-10-22: it was never installed on the
+machine, so the template only carried drift. The default model is
+`opencode-go/deepseek-v4.1-flash` with high
 thinking; `config/models.json` adds the session-affinity compat overrides that keep that
 proxy channel on one backend (credentials stay in `auth.json`).
 
@@ -317,7 +322,9 @@ These four extensions are plain TypeScript, loaded directly from
 `~/.pi/agent/extensions/`; the header and footer activate automatically in TUI mode.
 Tool rendering, code fences, skill chips, and summary cards are back to Pi's stock
 presentation — the custom versions were removed on 2026-10-21 and survive only in git
-history. Disable any file through `pi config` (or delete it) and `/reload` to change
+history. The tool renderers stay stock too: `pi-pigment` decorates the same eight built-in
+renderers through `registerToolRenderer`, so it was reverted the same way on 2026-10-22.
+Disable any file through `pi config` (or delete it) and `/reload` to change
 the look.
 
 ### Verify the statusline
@@ -414,6 +421,32 @@ diagnostic (`Type mismatch: cannot convert from String to int`) for a probe file
 
 Restart Pi or run `/reload` after changing the package selection. Provider-backed
 delegation needs a separate end-to-end check; configuration sync does not prove it.
+
+## Pi release fixes that matter here
+
+This setup carries no patches: the machine runs the stock release, no file under
+`~/.pi/agent/install/<version>/node_modules/` is edited after install (every `dist/**`
+mtime equals the install time), and there is no `*.patch` / `*.orig` / apply-after-update
+step anywhere. So when a release fixes something this setup used to trip over, there is
+nothing local to remove — only a note to keep.
+
+Pi 1.4.0 (2026-10-21) fixed these, ordered by how much they hurt here:
+
+| Fix | Issue | Why it lands here |
+| :--- | :--- | :--- |
+| Compaction and branch summaries use the model's output limit | [#9512](https://github.com/earendil-works/pi/issues/9512), [#9075](https://github.com/earendil-works/pi/issues/9075) | `generateSummary()` and `generateSummaryWithUsage()` ignore `reserveTokens` now, so long reasoning no longer fails with "generation hit the token cap". `/rewind` and `context-mode` both push context to the edge, so compaction runs often. |
+| Extension tools stay active after resume and `/tree` | [#11062](https://github.com/earendil-works/pi/issues/11062), [#11075](https://github.com/earendil-works/pi/issues/11075) | `account-pool` and `rewind` register commands and hooks; tools from an extension installed mid-session used to come back inactive. |
+| Concurrent extension dialogs no longer hang | [#11166](https://github.com/earendil-works/pi/issues/11166), [#9909](https://github.com/earendil-works/pi/issues/9909) | A second `select`/`confirm`/`input`/`editor` used to replace the first and never settle its promise. Twenty-one extension entries is enough surface for that to bite. |
+| Extension imports of `@earendil-works/pi-ai/models` resolve | [#11156](https://github.com/earendil-works/pi/issues/11156) | The subpath is aliased by the extension loader, so `clampThinkingLevel` and friends load instead of failing the whole extension. |
+| Sessions survive a response cut off at the output limit | [#11227](https://github.com/earendil-works/pi/issues/11227) | The truncated tool call is dropped together with its results, instead of leaving an orphan that made every later request fail validation. |
+| Terminal modes are torn down on abnormal exit | [#11170](https://github.com/earendil-works/pi/issues/11170) | No more mouse-tracking, focus-reporting, Kitty-keyboard, or alternate-screen escape sequences flooding the shell prompt. |
+| Suspending Pi no longer suspends the clipboard helper | [#11179](https://github.com/earendil-works/pi/issues/11179) | Ctrl+Z with `wl-copy`/`xclip`/`xsel` running used to hang paste in the shell. |
+| `grep` ignores `RIPGREP_CONFIG_PATH` | [#11203](https://github.com/earendil-works/pi/issues/11203), [#11230](https://github.com/earendil-works/pi/pull/11230) | The tool runs `rg --no-config`, so a `--fixed-strings` in an rc file cannot silently turn a regex search into a literal one. |
+| `mcp.json` with a UTF-8 BOM parses | [#11191](https://github.com/earendil-works/pi/issues/11191) | A BOM used to skip every server in the file, and made `pi mcp add`/`remove` fail. |
+
+One change here is behavioural rather than a fix: `before_provider_headers` handlers no
+longer see the OpenRouter, NVIDIA NIM, and OpenCode attribution headers, because they now
+come from pi-ai's client identity. No extension in this repo reads them.
 
 ## Layout
 
