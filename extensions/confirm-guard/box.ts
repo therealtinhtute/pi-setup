@@ -120,8 +120,12 @@ export class ConfirmBox implements Component {
 		const rows: string[] = [];
 		const push = (content = "") => rows.push(this.row(content, width));
 
-		// Title: accent, like Claude Code's "Bash command".
-		push(`${theme.fg("accent", theme.bold("Bash command"))}`);
+		// Title: the emphasis token, like Claude Code's "Bash command". Not `accent`:
+		// in some themes (the user's `cyan` among them) accent is *darker* than dim, so
+		// using it here would make the title -- and the selected option -- read as less
+		// important than the hints. `border` is the token whose luminance matches what
+		// Claude Code uses for these elements (#6c9ccc, luminance 0.31).
+		push(`${theme.fg("border", theme.bold("Bash command"))}`);
 		push();
 
 		// Why it appeared, muted — the same weight as Claude Code's description.
@@ -154,9 +158,9 @@ export class ConfirmBox implements Component {
 		const limit = contentWidth(width);
 		OPTIONS.forEach((option, index) => {
 			const focused = index === this.selected;
-			const pointer = focused ? theme.fg("accent", ">") : " ";
+			const pointer = focused ? theme.fg("border", ">") : " ";
 			const number = theme.fg("dim", `${index + 1}.`);
-			const label = focused ? theme.fg("accent", option.label) : theme.fg("text", option.label);
+			const label = focused ? theme.fg("border", option.label) : theme.fg("text", option.label);
 			const line = `${pointer} ${number} ${label}`;
 			const hint = theme.fg("dim", option.hint);
 			const gap = Math.max(1, limit - visibleWidth(line) - visibleWidth(hint));

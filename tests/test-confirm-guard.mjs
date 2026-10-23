@@ -8,7 +8,7 @@
 //   R1 prompt on a match, R2 decline blocks with a reason, R3 accept passes through,
 //   R4 config is strict and never throws, R5 no UI never blocks, R6 matching literal.
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -28,7 +28,7 @@ const jiti = createJiti(import.meta.url, {
 	},
 });
 
-const { getThemeByName } = await load(pkg("pi-coding-agent", "dist/modes/interactive/theme/theme.js"));
+const { getThemeByName, loadThemeFromPath } = await load(pkg("pi-coding-agent", "dist/modes/interactive/theme/theme.js"));
 const guard = await jiti.import(resolve("extensions/confirm-guard/index.ts"));
 const {
 	decide,
@@ -54,6 +54,7 @@ function fakeUi(answer, mode = "tui", keys = undefined) {
 	let renderedRaw = [];
 	let customCalls = 0;
 	let settledExplicitly = false;
+	let fakeTheme = null;
 	return {
 		// A prompt is either the box or the fallback selector; count both.
 		get calls() {
@@ -74,6 +75,9 @@ function fakeUi(answer, mode = "tui", keys = undefined) {
 		get settledExplicitly() {
 			return settledExplicitly;
 		},
+		setTheme(t) {
+			fakeTheme = t;
+		},
 		mode,
 		signal: undefined,
 		cwd: "~/Lab/pi-setup",
@@ -86,7 +90,7 @@ function fakeUi(answer, mode = "tui", keys = undefined) {
 			// Mirrors ctx.ui.custom: build the component, render it once, answer it.
 			async custom(factory, _options) {
 				customCalls += 1;
-				const theme = getThemeByName("dark");
+				const theme = fakeTheme ?? getThemeByName("dark");
 				let settled;
 				let settleCount = 0;
 				const component = factory({}, theme, {}, (result) => {
@@ -307,6 +311,77 @@ try {
 	assert.notEqual(yesFg, scriptFg, "the selection is visually distinct from plain text");
 	assert.ok(noFg, "the unselected option is coloured");
 	assert.notEqual(noFg, yesFg, "selected and unselected options differ in colour");
+
+	// Emphasis must be *brighter* than the rail, not merely different. A theme where
+	// accent is darker than dim would otherwise make the selected option look disabled
+	// while the hints looked important -- measured on the user's own cyan theme, where
+	// accent (#4d788e, luminance 0.17) sits below dim (#7e888e, 0.24).
+	const luminance = (sgr) => {
+		const m = sgr.match(/38;2;(\d+);(\d+);(\d+)/);
+		if (!m) return 0;
+		const [r, g, b] = [m[1], m[2], m[3]].map((v) => {
+			const n = Number(v) / 255;
+			return n <= 0.03928 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
+		});
+		return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+	};
+	assert.ok(
+		luminance(yesFg) > luminance(railFg),
+		"the selected option is brighter than the rail, so it reads as the focus",
+	);
+	assert.ok(
+		luminance(scriptFg) > luminance(railFg),
+		"the command is brighter than the rail, so it reads as the content",
+	);
+
+	// The assertions above used one theme. A real theme can invert the assumption --
+	// the operator's `cyan` does, its accent being darker than dim -- so the same
+	// invariants must hold for every theme we can load.
+	const themeDir = join(homedir(), ".pi/agent/themes");
+	const themeFiles = existsSync(themeDir)
+		? readdirSync(themeDir).filter((f) => f.endsWith(".json") && !f.includes(".backup."))
+		: [];
+	for (const file of themeFiles) {
+		const themed = loadThemeFromPath(join(themeDir, file));
+		if (!themed) continue;
+		const probe = fakeUi(true);
+		probe.setTheme(themed);
+		await handleToolCall({ toolName: "bash", input: { command: "git push origin main" } }, probe, ["git push"]);
+		const raw = probe.renderedRaw;
+		const plain = probe.renderedRaw.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
+		const at = (needle) => plain.findIndex((l) => l.includes(needle));
+		const sample = (idx, needle) => {
+			const line = raw[idx];
+			const col = plain[idx].indexOf(needle);
+			let vis = 0;
+			let cur = "";
+			for (let i = 0; i < line.length; ) {
+				const m = line.slice(i).match(/^\x1b\[([0-9;]*)m/);
+				if (m) {
+					if (m[1] === "0" || m[1] === "39") cur = "";
+					else if (m[1].startsWith("38;2")) cur = m[1];
+					i += m[0].length;
+					continue;
+				}
+				if (vis === col) return cur;
+				vis += 1;
+				i += String.fromCodePoint(line.codePointAt(i)).length;
+			}
+			return cur;
+		};
+		const railIdx = 0;
+		const railFg2 = sample(railIdx, "│");
+		const selFg = sample(at("Yes"), "Yes");
+		const cmdFg = sample(at("git push origin main"), "git push origin main");
+		assert.ok(
+			luminance(selFg) > luminance(railFg2),
+			"theme " + file + ": the selected option must be brighter than the rail",
+		);
+		assert.ok(
+			luminance(cmdFg) > luminance(railFg2),
+			"theme " + file + ": the command must be brighter than the rail",
+		);
+	}
 
 	// The question must be the brightest/emphasised prose, not the muted meta colour.
 	const metaLine = lines.findIndex((l) => l.includes("Hook PreToolUse") || l.includes("confirm-guard pattern"));
