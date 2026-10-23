@@ -1,0 +1,22 @@
+#!/bin/sh
+# Refuse direct pushes to the protected branch. Work goes through a branch + PR.
+#
+# Installed by setup/install-git-hooks.sh, because hooks live in .git/hooks/ and
+# are not tracked: a clone has none until it runs that script.
+protected="refs/heads/main"
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+	case "$remote_ref" in
+		"$protected")
+			echo "pre-push: blocked direct push to $protected" >&2
+			echo "  work through a branch + PR:" >&2
+			echo "    git switch -c feat/<name>" >&2
+			echo "    git commit ..." >&2
+			echo "    git push -u origin feat/<name>" >&2
+			echo "    gh pr create --fill" >&2
+			exit 1
+			;;
+	esac
+done
+
+exit 0
