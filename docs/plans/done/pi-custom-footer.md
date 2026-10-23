@@ -3,7 +3,9 @@
 ## Status
 - Spec: locked — user approved the proposed design.
 - Plan: implemented through installation.
-- Implementation: complete; real TUI smoke test pending user `/reload`.
+- Implementation: complete. TUI smoke test **passed** (the custom footer with the
+  `👾 <model> · <thinking> · <context bar> · ⌥ <branch>` line is rendering in the
+  running Pi). Closed 2026-10-23.
 
 ## Goal
 Replace the interactive Pi footer with one compact, left-aligned line:

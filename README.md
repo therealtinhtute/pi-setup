@@ -567,17 +567,22 @@ its generated `orca-*` extensions separately; they are not copied into this repo
 Remove what was installed:
 
 ```bash
-rm ~/.pi/agent/extensions/code-block.ts
-rm ~/.pi/agent/extensions/compact-tools.ts
+rm -rf ~/.pi/agent/extensions/pi-pretty
 rm ~/.pi/agent/extensions/custom-banner.ts
 rm ~/.pi/agent/extensions/custom-footer.ts
 rm ~/.pi/agent/extensions/dollar-skill.ts
-rm ~/.pi/agent/extensions/skill-highlight-editor.ts
-rm ~/.pi/agent/extensions/skill-invoke-chip.ts
-rm ~/.pi/agent/extensions/skill-transcript-badge.ts
-rm ~/.pi/agent/extensions/transcript-summary-cards.ts
+rm ~/.pi/agent/extensions/pretty-border.ts
+rm -rf ~/.pi/agent/extensions/account-pool
+rm -rf ~/.pi/agent/extensions/rewind
 rm ~/.pi/agent/scripts/get-secret.sh
 ```
+
+The list names only what this repository currently installs. Earlier entries
+(`code-block.ts`, `compact-tools.ts`, `skill-highlight-editor.ts`,
+`skill-invoke-chip.ts`, `skill-transcript-badge.ts`,
+`transcript-summary-cards.ts`) were removed on 2026-10-21 in `a6ac4c0` —
+"return tool, code, skill and summary UI to stock" — so they no longer exist to
+delete.
 
 Then restore any `*.backup.<timestamp>` file you want back.
 
