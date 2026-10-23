@@ -19,6 +19,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { confirmWithBox } from "./box.ts";
 
 /** Used when the config file is missing or unusable. */
 export const DEFAULT_PATTERNS: readonly string[] = ["git push"];
@@ -169,7 +170,11 @@ export async function handleToolCall(
 	ctx: {
 		mode: string;
 		signal?: AbortSignal;
-		ui: { confirm: (title: string, message: string, opts?: { signal?: AbortSignal }) => Promise<boolean> };
+		cwd?: string;
+		ui: {
+			confirm: (title: string, message: string, opts?: { signal?: AbortSignal }) => Promise<boolean>;
+			custom?: Parameters<typeof confirmWithBox>[0]["ui"]["custom"];
+		};
 	},
 	patterns: readonly string[],
 ): Promise<GuardDecision | undefined> {
@@ -179,12 +184,14 @@ export async function handleToolCall(
 	if (ctx.mode !== "tui") return;
 
 	const command = commandOf(event.input);
+	// The dialog is drawn by confirm-box; the decision stays in `decide`.
 	const decision = await decide(command, patterns, async (matched) =>
-		ctx.ui.confirm(
-			`Run ${matched}?`,
-			`${displayCommand(command ?? "")}\n\nThis command matches a confirm-guard pattern.`,
-			ctx.signal ? { signal: ctx.signal } : undefined,
-		),
+		confirmWithBox({ ui: ctx.ui }, {
+			pattern: matched,
+			command: displayCommand(command ?? ""),
+			cwd: ctx.cwd,
+			note: "This command matches a confirm-guard pattern.",
+		}),
 	);
 	return decision.block ? decision : undefined;
 }

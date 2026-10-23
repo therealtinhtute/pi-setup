@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 lane: normal
 ---
 # Confirm gate for destructive commands
@@ -31,6 +31,9 @@ lane: normal
   - phase check: `node tests/test-confirm-guard.mjs` covers R1–R6 with a fake UI; `pi` in a TUI must show the dialog for a real `git push`
 
 ## Log
+- 2026-10-23 ui: replaced the generic selector with a Claude-Code-shaped dialog in `box.ts`. The design was measured from a real Claude Code permission screenshot (OCR + pixel sampling) rather than guessed, which corrected two assumptions: there is **no box** (a single continuous dim rail runs down the left edge), and the command is **plain bright text**, not a tinted code block. Colours sampled: rail #666666, title #6c9ccc, meta #848484, command #d8d8d8, selection #6c9ccc. Mapped to pi theme tokens dim/accent/muted/text.
+- 2026-10-23 ui: the extension had to become a directory (`extensions/confirm-guard/{index.ts,box.ts}`) because Pi loads *every* top-level `.ts` in `extensions/` as an extension, so a sibling `confirm-box.ts` failed with "does not export a valid factory function". `setup/install.sh` only syncs subdirectories that contain `index.ts`, which matches that loader rule.
+- 2026-10-23 test: assertions rewritten for the measured design (rail continuity, no box glyphs, no background fill on the script, four distinct colour registers). Colour is sampled **at the label's own column**: reading "first non-rail SGR" picked up the `>` pointer, which is accent regardless of the label, so a "selected option turned into plain text" mutation survived. 7/7 mutations caught after that fix.
 - 2026-10-23 merged: PR #13 merged into main as `6fec4ad`; branch deleted; `fork` remote removed per owner (only `therealtinhtute` is used).
 - 2026-10-23 git: commit `6b233b3` on `feat/confirm-guard`, PR #13 opened (+556 across 4 files). `.harness/` added to `.gitignore` (local workflow state, never tracked).
 - 2026-10-23 work: `extensions/confirm-guard.ts` + `tests/test-confirm-guard.mjs` written. Red/green proven by three mutations: case-insensitive matching (R6 failed), accept-also-blocks (R3 failed), empty-pattern-disables-guard (R4 failed); each restored to green.
