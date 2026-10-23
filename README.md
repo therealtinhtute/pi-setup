@@ -571,7 +571,7 @@ rm -rf ~/.pi/agent/extensions/pi-pretty
 rm ~/.pi/agent/extensions/custom-banner.ts
 rm ~/.pi/agent/extensions/custom-footer.ts
 rm ~/.pi/agent/extensions/dollar-skill.ts
-rm ~/.pi/agent/extensions/confirm-guard.ts
+rm -r ~/.pi/agent/extensions/confirm-guard
 rm ~/.pi/agent/extensions/pretty-border.ts
 rm -rf ~/.pi/agent/extensions/account-pool
 rm -rf ~/.pi/agent/extensions/rewind
@@ -594,17 +594,32 @@ from therealTINHTUTE with love
 ## Confirming destructive commands
 
 The agent runs `bash` freely, and some commands have no local undo — `git push`
-publishes to a remote. `extensions/confirm-guard.ts` gates them: when a bash
+publishes to a remote. `extensions/confirm-guard/` gates them: when a bash
 command matches a pattern, Pi asks before it runs.
 
 ```
-Run git push?
-  git push origin main
-  This command matches a confirm-guard pattern.
-  → Yes
-    No
-  ↑↓ navigate  enter select  escape/ctrl+c cancel
+│  Bash command
+│
+│  This command matches a confirm-guard pattern.
+│
+│  git push origin main
+│
+│  cwd: ~/Lab/pi-setup
+│
+│  Do you want to proceed?
+│
+│  > 1. Yes                            run it this once
+│    2. No                                do not run it
+│
+│  enter to confirm · esc to cancel · ↑↓ to choose
 ```
+
+The shape is copied from a real Claude Code permission prompt, measured rather
+than guessed (OCR plus pixel sampling of a screenshot): a continuous dim rail
+instead of a box, an accent title, muted metadata, the command as plain bright
+text, and the selection in the accent. Five registers, no frames, no background
+fills — the command has to be the most legible thing in the dialog, because it is
+the thing you are agreeing to.
 
 Enter accepts (Yes is preselected), Escape cancels. Declining does not fail
 silently: the tool is blocked and the model receives the reason, so it asks you
