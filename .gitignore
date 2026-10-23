@@ -49,3 +49,6 @@ Thumbs.db
 extensions/pi-pretty/dist/
 extensions/pi-pretty/coverage/
 extensions/pi-pretty/*.tsbuildinfo
+
+# --- Local workflow artifacts (plan locks, session state) ---
+.harness/
