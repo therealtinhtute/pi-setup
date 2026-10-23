@@ -47,15 +47,15 @@ to you. Pass `--force` to overwrite anyway (a backup is still taken).
 `pi-subagents` ships a `worker` profile whose tool list is a strict allowlist:
 `read, grep, find, ls, bash, edit, write, contact_supervisor`. That is deliberate — a writer
 child should not wander — but it also makes the bundled worker blind to this setup's code
-intelligence: no `lsp_diagnostics`, no `memory_search`, and `inheritSkills: false` so it cannot
+intelligence: no `lens_diagnostics`, no `memory_search`, and `inheritSkills: false` so it cannot
 see the installed skills either.
 
 `agents/worker-lsp.md` closes that gap without handing the worker the whole toolbox:
 
 | Field | Value | Why |
 | :--- | :--- | :--- |
-| `tools` | worker's allowlist + `lsp_*`, `ast_search`, `code_rewrite`, `code_overview`, `memory_search`, `memory_read`, `scratchpad` | code intel plus read-only memory (no `memory_write` — a child does not edit long-term memory) |
-| `extensions` | `~/.pi/agent/npm/node_modules/pi-lsp-extension/dist/index.js`, `.../pi-memory/index.ts` | foreground children never load ambient extensions, so an allowlisted name alone does **not** load its provider; the paths must be listed |
+| `tools` | worker's allowlist + `lens_diagnostics`, `symbol_search`, `module_report`, `read_symbol`, `read_enclosing`, `lsp_navigation`, `ast_grep_search`, `ast_grep_outline`, `pi_lens_activate_tools`, `memory_search`, `memory_read`, `scratchpad` | code intel plus read-only memory (no `memory_write` — a child does not edit long-term memory; no `ast_grep_replace` — writes go through `edit`) |
+| `extensions` | `~/.pi/agent/npm/node_modules/pi-lens/dist/index.js`, `.../pi-memory/index.ts` | foreground children never load ambient extensions, so an allowlisted name alone does **not** load its provider; the paths must be listed |
 | `inheritSkills` | `true` | the worker can follow this repo's own skills (`work`, `check`, `hunt`, …) |
 | `timeoutMs` | `1500000` (25 min) | per-run cost and latency ceiling |
 | `acceptance` | `checked` | the run must pass an acceptance gate, not just claim success |
@@ -66,9 +66,9 @@ Launch it like any other agent; keep `worktree: true` for write isolation:
 subagent({ agent: "worker-lsp", task: "…", worktree: true })
 ```
 
-Verified 2026-10-21 with a read-only probe child: `memory_search`, `lsp_diagnostics`, and
-`lsp_symbols` all registered and returned real output. Without the explicit `extensions`
-line, the same launch reports the tools as missing.
+Verified 2026-10-23 with a read-only probe child on `pi-lens`: `lens_diagnostics` registered and
+reported 80 files / 899 diagnostics, and `memory_search` returned real output. Without the
+explicit `extensions` line, the same launch reports the tools as missing.
 
 Deliberately **not** configured: no sandbox. Children run with an unrestricted `bash` in the
 parent environment. Use `worktree: true` for isolation of writes; if you later want
@@ -88,8 +88,9 @@ scripts/configs (`decision-compact.ts`, Devin client patch, `advisor.json`). New
 installed packages on the machine (`@narumitw/pi-goal`, `pi-subagents@0.81.0`) are synced
 into the template. `pi-pigment` was added to the template on 2026-10-21 and reverted on
 2026-10-22: it was never installed on the machine, so the template only carried drift.
-`pi-lens` was dropped on 2026-10-22: too heavy for how little it was used, and it
-duplicated `pi-lsp-extension` with a second LSP client pool. `@heyhuynhgiabuu/pi-pretty`
+`pi-lens` was dropped on 2026-10-22 as too heavy, then re-adopted on 2026-10-23 once
+`pi-lsp-extension` and `context-mode` were removed: it replaces both, so the tool count
+went down. `@heyhuynhgiabuu/pi-pretty`
 was installed the same day by choice and is synced here too, then vendored into
 `extensions/pi-pretty/` on 2026-10-23 so its renderer could be changed.
 
@@ -382,25 +383,20 @@ or toggle the setting from `/settings`.
 Disable any file through `pi config` (or delete it) and `/reload` to change
 the look.
 
-### Verify the statusline
+### Run the tests
 
-With Pi installed, run from the repository root:
-
-```bash
-node tests/test-custom-footer.mjs
-node tests/test-account-pool.mjs
-node tests/test-rewind.mjs
-```
-
-Verify the search and package templates without credentials or network calls:
+From the repository root:
 
 ```bash
-node tests/test-web-search-config.mjs
-node tests/test-package-selection.mjs
+node tests/run-all.mjs          # every test file, one summary
+node tests/test-rewind.mjs      # or run one
 ```
 
-For npm or other install layouts, set `PI_NODE_MODULES` to the directory
-containing Pi's installed dependencies. Tests cover light/dark themes, context
+`tests/lib/pi-modules.mjs` finds Pi's runtime modules on its own, in both layouts:
+the installer (`~/.pi/agent/install/releases/<version>/node_modules`) and a global
+package install (Homebrew, mise, nvm, `npm -g`), where `pi-tui` and `jiti` sit in
+`pi-coding-agent`'s nested `node_modules` rather than beside it. Set
+`PI_NODE_MODULES=/path/to/node_modules` to override the search. Tests cover light/dark themes, context
 and cache thresholds, hidden unknown cache usage, session TPM and formatting,
 narrow terminals, emoji/Unicode, live updates, commands, and subscription cleanup.
 After installing, run `/reload` in Pi to check both components visually.
@@ -408,8 +404,9 @@ After installing, run `/reload` in Pi to check both components visually.
 ## Packages
 
 `config/settings.json` lists the packages this setup keeps. Eight were measured
-against 158 sessions of real tool usage; `context-mode` is still on trial and
-`@heyhuynhgiabuu/pi-pretty` was added by choice on 2026-10-22 (both marked below):
+against 158 sessions of real tool usage; `@heyhuynhgiabuu/pi-pretty` was added by
+choice on 2026-10-22 and `pi-lens` replaced both `pi-lsp-extension` and
+`context-mode` on 2026-10-23:
 
 | Package | Why it stays |
 | :--- | :--- |
@@ -418,10 +415,9 @@ against 158 sessions of real tool usage; `context-mode` is still on trial and
 | `@juicesharp/rpiv-todo` | the `todo` tool (738 calls) |
 | `@juicesharp/rpiv-ask-user-question` | `ask_user_question` (36 calls) |
 | `pi-memory` | six `memory_*` tools plus `scratchpad` |
-| `pi-lsp-extension@1.4.0` | `lsp_diagnostics` (151 calls), `code_overview`, `ast_search` |
 | `pi-subagents@0.81.0` | `subagent`, `bg_wait`, FleetView |
 | `@narumitw/pi-goal` | `goal_*` tools and `/goal` |
-| `context-mode` *(trial)* | tool-output sandboxing + SQLite memory; overlaps `/rewind` and `pi-memory` |
+| `pi-lens` | `lens_diagnostics`, `symbol_search`, `module_report`, `read_symbol`, `read_enclosing`, `lsp_navigation`, `ast_grep_*` — one code-intelligence layer instead of `pi-lsp-extension` + a second LSP pool |
 | `@heyhuynhgiabuu/pi-pretty` | message and tool rendering (see below); re-registers `read`/`edit`, owns no header or footer |
 
 Dropped, and why they should not come back without a measurement:
@@ -431,20 +427,24 @@ Dropped, and why they should not come back without a measurement:
 - **`@latentminds/pi-quotas`, `pi-context-view`, `pi-session-recap`, `pi-simplify`,
   `pi-cache-optimizer`, `pi-diff-review`** — commands and UI only, zero measured use;
   quota and context state already show in the footer and `/antigravity.usage`.
-- **`pi-lens`** — dropped on 2026-10-22: too heavy for how little it was used. It shipped
-  its own LSP client pool, multi-language linters/formatters, tree-sitter grammars, four
-  skills and eleven tools, all duplicating `pi-lsp-extension` (`lsp_*`, `ast_search`,
-  `code_rewrite`, `code_overview`, and the same `jdtls` for Java).
+- **`pi-lsp-extension` + `context-mode`** — dropped on 2026-10-23 in favour of `pi-lens`.
+  `pi-lens` covers the LSP diagnostics that `pi-lsp-extension` carried (plus symbol search and the
+  ast-grep tools) without a second client pool, and `context-mode`'s output sandboxing overlapped
+  `/rewind` and `pi-memory` while adding nine `ctx_*` tools to every request.
+- **`pi-lens`** — briefly dropped on 2026-10-22 for being heavy, then re-adopted on 2026-10-23
+  once `pi-lsp-extension` and `context-mode` left: it now replaces both, so the total tool count
+  went down, not up. The heaviness was duplication, not the package.
 
-`pi-lsp-extension` still exposes eleven tools even though only diagnostics is used in
-practice; trimming that further means an active-tools filter, which this setup does
-not carry yet. LSP servers are installed separately (`typescript-language-server`
-plus `typescript` for JS/TS); without one, the tools fall back to
-tree-sitter analysis, which is not type checking.
+`pi-lens` exposes eight agent tools, five of them always active; `lsp_navigation` and the
+`ast_grep_*` tools load on demand through `pi_lens_activate_tools`, so the schema cost is paid
+only when a task needs them. LSP servers are installed separately
+(`typescript-language-server` plus `typescript` for JS/TS); without one, `lens_diagnostics`
+falls back to tree-sitter and ast-grep rules, which is not type checking.
 
-One trial is left, and its overlap is real: `context-mode` rewrites tool output and
-context, so it duplicates `/rewind` and `pi-memory`. Keep one per job once a real session
-shows which side wins. `pi-lens` already lost that bet and was dropped.
+One trial was retired, and its overlap resolved the other way: `context-mode` rewrote tool output
+and context, duplicating `/rewind` and `pi-memory`, so it was replaced by `pi-lens` for code
+intelligence instead of being kept alongside both. `pi-lens` had already lost the duplication bet
+against `pi-lsp-extension` on 2026-10-22; removing its competitor made it the winner.
 
 Restart Pi or run `/reload` after changing the package selection.
 
@@ -505,7 +505,7 @@ Pi 1.4.0 (2026-10-21) fixed these, ordered by how much they hurt here:
 
 | Fix | Issue | Why it lands here |
 | :--- | :--- | :--- |
-| Compaction and branch summaries use the model's output limit | [#9512](https://github.com/earendil-works/pi/issues/9512), [#9075](https://github.com/earendil-works/pi/issues/9075) | `generateSummary()` and `generateSummaryWithUsage()` ignore `reserveTokens` now, so long reasoning no longer fails with "generation hit the token cap". `/rewind` and `context-mode` both push context to the edge, so compaction runs often. |
+| Compaction and branch summaries use the model's output limit | [#9512](https://github.com/earendil-works/pi/issues/9512), [#9075](https://github.com/earendil-works/pi/issues/9075) | `generateSummary()` and `generateSummaryWithUsage()` ignore `reserveTokens` now, so long reasoning no longer fails with "generation hit the token cap". `/rewind` pushes context to the edge, so compaction runs often. |
 | Extension tools stay active after resume and `/tree` | [#11062](https://github.com/earendil-works/pi/issues/11062), [#11075](https://github.com/earendil-works/pi/issues/11075) | `account-pool` and `rewind` register commands and hooks; tools from an extension installed mid-session used to come back inactive. |
 | Concurrent extension dialogs no longer hang | [#11166](https://github.com/earendil-works/pi/issues/11166), [#9909](https://github.com/earendil-works/pi/issues/9909) | A second `select`/`confirm`/`input`/`editor` used to replace the first and never settle its promise. Twenty-one extension entries is enough surface for that to bite. |
 | Extension imports of `@earendil-works/pi-ai/models` resolve | [#11156](https://github.com/earendil-works/pi/issues/11156) | The subpath is aliased by the extension loader, so `clampThinkingLevel` and friends load instead of failing the whole extension. |
@@ -539,11 +539,17 @@ pi-setup/
 ├── setup/
 │   └── install.sh
 └── tests/
+    ├── lib/pi-modules.mjs      # locates Pi's runtime modules
+    ├── run-all.mjs
     ├── test-account-pool.mjs
+    ├── test-confirm-guard.mjs
     ├── test-custom-footer.mjs
+    ├── test-get-secret.mjs
     ├── test-package-selection.mjs
+    ├── test-pretty-border.mjs
     ├── test-rewind.mjs
-    └── test-web-search-config.mjs
+    ├── test-web-search-config.mjs
+    └── test-worker-agent.mjs
 ```
 
 ## Manual steps after install
