@@ -20,13 +20,14 @@ const expected = [
 	"npm:pi-web-access",
 	"npm:@juicesharp/rpiv-ask-user-question",
 	"npm:@juicesharp/rpiv-todo",
-	"npm:pi-lsp-extension@1.4.0",
 	"npm:pi-memory",
 	"npm:pi-subagents@0.81.0",
 	"npm:@narumitw/pi-goal",
-	// On trial (2026-10-21): context-mode for tool-output sandboxing. It has not proven
-	// itself yet — see the dropped list below for what already lost that bet.
-	"npm:context-mode",
+	// Swapped in on 2026-10-23 for pi-lsp-extension + context-mode. Both covered jobs
+	// the TUI never used: pi-lens carries diagnostics, symbol search and the structural
+	// ast-grep tools in one package, so the second LSP client pool is gone and the
+	// tool-output sandbox (which overlapped /rewind and pi-memory) with it.
+	"npm:pi-lens",
 	// Vendored 2026-10-23: pi-pretty was forked into extensions/pi-pretty so its
 	// renderer can be changed (working-indicator split, gradient work) without
 	// shipping a private npm package. Upstream v0.8.0, MIT. It adds no tool of its
@@ -48,11 +49,11 @@ for (const dropped of [
 	"npm:pi-simplify",
 	"npm:pi-diff-review@0.1.27",
 	"npm:pi-condense",
-	// pi-lens (post-edit LSP/lint/format feedback, its own LSP client pool, four skills
-	// and eleven tools) was dropped on 2026-10-22: too heavy for how little it was used,
-	// and it duplicated pi-lsp-extension, which already carries lsp_*, ast_search,
-	// code_rewrite and code_overview and drives the same jdtls for Java.
-	"npm:pi-lens",
+	// pi-lsp-extension and context-mode were both dropped on 2026-10-23. pi-lens now
+	// owns code intelligence (lens_diagnostics, symbol_search, ast_grep_*) and pi-memory
+	// already owns memory, so neither had a job left.
+	"npm:pi-lsp-extension",
+	"npm:context-mode",
 	// pi-pigment (render-only decorators for the eight built-in tool renderers) was
 	// added to the template on 2026-10-21 and reverted on 2026-10-22. It hooks the
 	// same internal renderer surface that retired code-block.ts, and it was never

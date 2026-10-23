@@ -31,19 +31,20 @@ assert.equal(fields.get("inheritProjectContext"), "true", "AGENTS.md instruction
 // code-intelligence tools the bundled worker lacks.
 const tools = list("tools");
 for (const required of ["read", "edit", "write", "bash", "contact_supervisor",
-	"lsp_diagnostics", "lsp_references", "lsp_code_actions", "memory_search"]) {
+	"lens_diagnostics", "symbol_search", "module_report", "read_symbol",
+	"lsp_navigation", "memory_search"]) {
 	assert(tools.includes(required), `tools must allowlist ${required}`);
 }
-for (const forbidden of ["memory_write", "subagent", "web_search"]) {
+for (const forbidden of ["memory_write", "subagent", "web_search", "ast_grep_replace"]) {
 	assert(!tools.includes(forbidden), `tools must not grant ${forbidden} to a child`);
 }
 
 // An allowlisted name does not load the provider that registers it, and foreground
 // children never load ambient extensions — so both providers must be listed here.
 const extensions = list("extensions");
-assert(extensions.length === 2, "exactly the LSP and memory providers are declared");
-assert(extensions.some((entry) => entry.endsWith("pi-lsp-extension/dist/index.js")),
-	"the LSP provider path must point at its dist entry point");
+assert(extensions.length === 2, "exactly the code-intelligence and memory providers are declared");
+assert(extensions.some((entry) => entry.endsWith("pi-lens/dist/index.js")),
+	"the code-intelligence provider path must point at its dist entry point");
 assert(extensions.some((entry) => entry.endsWith("pi-memory/index.ts")),
 	"the memory provider path must point at its entry file");
 for (const entry of extensions) {
@@ -57,7 +58,7 @@ assert(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 3_600_000,
 	"timeoutMs must be a positive deadline of at most one hour");
 assert.equal(fields.get("acceptance"), "checked", "a run must pass acceptance, not just claim success");
 
-assert(prompt.includes("lsp_diagnostics"), "the prompt must tell the worker to run diagnostics");
+assert(prompt.includes("lens_diagnostics"), "the prompt must tell the worker to run diagnostics");
 assert(/\n## Final response shape/.test(prompt), "the prompt must define the final response shape");
 
 console.log("PASS: worker-lsp allowlist, explicit extension providers, run deadline, acceptance level");
