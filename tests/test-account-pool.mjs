@@ -6,27 +6,16 @@
 // the agent_end handler that reacts to a quota wall.
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
-const install = join(homedir(), ".pi/agent/install");
-const modules = process.env.PI_NODE_MODULES || join(
-	install, "releases", readFileSync(join(install, "current-version"), "utf8").trim(), "node_modules",
-);
-const pkg = (name, file) => join(modules, "@earendil-works", name, file);
-const load = (file) => import(pathToFileURL(file).href);
-const { createJiti } = await load(join(modules, "jiti/lib/jiti.mjs"));
+import { jitiEntry, load, piAliases } from "./lib/pi-modules.mjs";
 
 const root = mkdtempSync(join(tmpdir(), "account-pool-"));
 process.env.PI_ACCOUNT_POOL_DIR = root;
 
-const jiti = createJiti(import.meta.url, {
-	alias: {
-		"@earendil-works/pi-coding-agent": pkg("pi-coding-agent", "dist/index.js"),
-		"@earendil-works/pi-tui": pkg("pi-tui", "dist/index.js"),
-	},
-});
+const { createJiti } = await load(jitiEntry);
+const jiti = createJiti(import.meta.url, { alias: piAliases });
 
 const quota = await jiti.import(resolve("extensions/account-pool/lib/quota.ts"));
 const rank = await jiti.import(resolve("extensions/account-pool/lib/rank.ts"));

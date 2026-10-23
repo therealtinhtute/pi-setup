@@ -9,11 +9,21 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { fileMode } from "./lib/pi-modules.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const script = resolve(here, "../scripts/get-secret.sh");
 assert(existsSync(script), `missing ${script}`);
-assert.equal(execFileSync("stat", ["-c", "%a", script]).toString().trim(), "700",
-	"get-secret.sh must stay mode 700: it prints a secret");
+// Git only records the executable bit, so a checkout is 755 no matter what. The
+// secret-printer contract (mode 700) is enforced where it takes effect: install.sh
+// chmods the destination, which is what pi actually invokes.
+assert.equal(fileMode(script), "755",
+	"get-secret.sh must be executable in the repo (git only stores 755)");
+const installed = join(process.env.HOME ?? "", ".pi/agent/scripts/get-secret.sh");
+if (existsSync(installed)) {
+	assert.equal(fileMode(installed), "700",
+		"the installed get-secret.sh must be mode 700: it prints a secret");
+}
 
 const dir = mkdtempSync(join(tmpdir(), "get-secret-test-"));
 const envFile = join(dir, "env");

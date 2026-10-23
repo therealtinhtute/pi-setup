@@ -5,24 +5,12 @@
 // checks that the context hook only rewrites when armed, and that user and
 // assistant messages survive untouched.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
 
-const install = join(homedir(), ".pi/agent/install");
-const modules = process.env.PI_NODE_MODULES || join(
-	install, "releases", readFileSync(join(install, "current-version"), "utf8").trim(), "node_modules",
-);
-const pkg = (name, file) => join(modules, "@earendil-works", name, file);
-const load = (file) => import(pathToFileURL(file).href);
-const { createJiti } = await load(join(modules, "jiti/lib/jiti.mjs"));
-const jiti = createJiti(import.meta.url, {
-	alias: {
-		"@earendil-works/pi-coding-agent": pkg("pi-coding-agent", "dist/index.js"),
-		"@earendil-works/pi-tui": pkg("pi-tui", "dist/index.js"),
-	},
-});
+import { jitiEntry, load, piAliases } from "./lib/pi-modules.mjs";
+
+const { createJiti } = await load(jitiEntry);
+const jiti = createJiti(import.meta.url, { alias: piAliases });
 
 const lib = await jiti.import(resolve("extensions/rewind/lib/rewind.ts"));
 const { default: rewind } = await jiti.import(resolve("extensions/rewind/index.ts"));

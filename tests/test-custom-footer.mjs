@@ -1,29 +1,19 @@
 // Run from the repo root: node tests/test-custom-footer.mjs
 // For other install layouts: PI_NODE_MODULES=/path/to/node_modules node tests/test-custom-footer.mjs
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
 
-const install = join(homedir(), ".pi/agent/install");
-const modules = process.env.PI_NODE_MODULES || join(
-	install, "releases", readFileSync(join(install, "current-version"), "utf8").trim(), "node_modules",
-);
-const pkg = (name, file) => join(modules, "@earendil-works", name, file);
-const load = (file) => import(pathToFileURL(file).href);
-const { createJiti } = await load(join(modules, "jiti/lib/jiti.mjs"));
-const jiti = createJiti(import.meta.url, { alias: {
-	"@earendil-works/pi-coding-agent": pkg("pi-coding-agent", "dist/index.js"),
-	"@earendil-works/pi-tui": pkg("pi-tui", "dist/index.js"),
-} });
+import { jitiEntry, load, pkgFile, piAliases } from "./lib/pi-modules.mjs";
+
+const { createJiti } = await load(jitiEntry);
+const jiti = createJiti(import.meta.url, { alias: piAliases });
 const { default: extension } = await jiti.import(resolve("extensions/custom-footer.ts"));
-const { parseColor, visibleWidth } = await load(pkg("pi-tui", "dist/index.js"));
+const { parseColor, visibleWidth } = await load(pkgFile("pi-tui", "dist/index.js"));
 const gray = parseColor("#9e9e9e"), yellow = parseColor("#facc15"), red = parseColor("#f87171");
 const contextColor = (percent) => percent >= 75
 	? red
 	: percent >= 50 ? yellow : gray;
-const { getThemeByName } = await load(pkg("pi-coding-agent", "dist/modes/interactive/theme/theme.js"));
+const { getThemeByName } = await load(pkgFile("pi-coding-agent", "dist/modes/interactive/theme/theme.js"));
 const plain = (text) => text.replace(/\x1b\[[0-9;]*m/g, "");
 
 for (const themeName of ["dark", "light"]) {

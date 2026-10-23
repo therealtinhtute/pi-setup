@@ -75,7 +75,7 @@ const required = [
 	[/const ours = new WeakSet<EditorFactory>\(\)/, "wrapper identity tracked in a WeakSet (no mutation of a foreign factory)"],
 	[/if \(current && ours\.has\(current\)\) return "already"/, "ensure() is idempotent"],
 	[/if \(current\) baseline = current;/, "the foreign factory is remembered before taking over"],
-	[/if \(enabled\) await ensure\(ctx\)/, "agent_start re-attaches after a replacement factory"],
+	[/if \(enabled\) await ensure\(pi, ctx\)/, "agent_start re-attaches after a replacement factory"],
 	[/if \(enabled\) scheduleRetries\(ctx\)/, "session_start respects owner intent"],
 	[/enabled = false;/, "/input-border off records intent"],
 	[/if \(current && !ours\.has\(current\)\)/, "off adopts a newer foreign factory instead of clobbering it with a stale baseline"],

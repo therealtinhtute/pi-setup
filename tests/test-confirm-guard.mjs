@@ -11,24 +11,13 @@ import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
-const install = join(homedir(), ".pi/agent/install");
-const modules =
-	process.env.PI_NODE_MODULES ||
-	join(install, "releases", readFileSync(join(install, "current-version"), "utf8").trim(), "node_modules");
-const pkg = (name, file) => join(modules, "@earendil-works", name, file);
-const load = (file) => import(pathToFileURL(file).href);
+import { jitiEntry, load, pkgFile, piAliases } from "./lib/pi-modules.mjs";
 
-const { createJiti } = await load(join(modules, "jiti/lib/jiti.mjs"));
-const jiti = createJiti(import.meta.url, {
-	alias: {
-		"@earendil-works/pi-coding-agent": pkg("pi-coding-agent", "dist/index.js"),
-		"@earendil-works/pi-tui": pkg("pi-tui", "dist/index.js"),
-	},
-});
+const { createJiti } = await load(jitiEntry);
+const jiti = createJiti(import.meta.url, { alias: piAliases });
 
-const { getThemeByName, loadThemeFromPath } = await load(pkg("pi-coding-agent", "dist/modes/interactive/theme/theme.js"));
+const { getThemeByName, loadThemeFromPath } = await load(pkgFile("pi-coding-agent", "dist/modes/interactive/theme/theme.js"));
 const guard = await jiti.import(resolve("extensions/confirm-guard/index.ts"));
 const {
 	decide,
