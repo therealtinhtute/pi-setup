@@ -4,6 +4,7 @@
 - Spec: locked — user picked all three phases in order, and "antigravity first, shared core".
 - Plan: phases below, each independently shippable.
 - Implementation: **all three phases shipped** (2026-10-21) — `extensions/account-pool/` (20 checks), the widened web routing, `extensions/rewind/` (16 checks); everything installed and load-verified through pi's own extension discovery (15 extensions, 0 load errors).
+- Closed 2026-10-23: every acceptance check below is covered by a passing suite.
 - Supersedes: the earlier `harness-split.md` (deleted). Versioning or backing up `~/.omp` is explicitly **out of scope**; this repository only gains pi-side code and config.
 
 ## Goal
