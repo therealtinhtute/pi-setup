@@ -571,6 +571,7 @@ rm -rf ~/.pi/agent/extensions/pi-pretty
 rm ~/.pi/agent/extensions/custom-banner.ts
 rm ~/.pi/agent/extensions/custom-footer.ts
 rm ~/.pi/agent/extensions/dollar-skill.ts
+rm ~/.pi/agent/extensions/confirm-guard.ts
 rm ~/.pi/agent/extensions/pretty-border.ts
 rm -rf ~/.pi/agent/extensions/account-pool
 rm -rf ~/.pi/agent/extensions/rewind
@@ -589,6 +590,57 @@ Then restore any `*.backup.<timestamp>` file you want back.
 ---
 
 from therealTINHTUTE with love
+
+## Confirming destructive commands
+
+The agent runs `bash` freely, and some commands have no local undo — `git push`
+publishes to a remote. `extensions/confirm-guard.ts` gates them: when a bash
+command matches a pattern, Pi asks before it runs.
+
+```
+Run git push?
+  git push origin main
+  This command matches a confirm-guard pattern.
+  → Yes
+    No
+  ↑↓ navigate  enter select  escape/ctrl+c cancel
+```
+
+Enter accepts (Yes is preselected), Escape cancels. Declining does not fail
+silently: the tool is blocked and the model receives the reason, so it asks you
+instead of retrying.
+
+Patterns live in `~/.pi/agent/confirm-guard.json`; the file is optional and
+defaults to `["git push"]` when absent:
+
+```json
+{ "patterns": ["git push", "rm -rf", "git reset --hard"] }
+```
+
+`/confirm-guard status` shows the active list and where it came from;
+`/confirm-guard reload` re-reads it without restarting Pi. The path honours
+`PI_CODING_AGENT_DIR`, the same variable `setup/install.sh` uses.
+
+Three deliberate limits:
+
+- **Literal, case-sensitive substring matching.** No regex, no shell. `git p.sh`
+  does not match `git push`, and `GIT PUSH` does not either. Whitespace runs are
+  collapsed first, so `git  push` and `git\tpush` cannot slip past. Because it is
+  a plain substring, chained commands are covered (`echo hi && git push` matches)
+  and so is the rare false positive (`echo "git push is fine"` also matches).
+  Erring toward one extra prompt was the deliberate choice; a shell parser would
+  be the alternative and is a much larger surface. `git -C /repo push` is the known
+  gap — no substring can see it, so add `"push"` or `"git -C"` if you use it.
+- **TUI only.** Under `pi -p`, `--mode rpc`, `--mode json` nothing is asked: there
+  is no one at the keyboard, and a prompt that waits forever is worse than running
+  the command. The guard protects you at the terminal, not automation.
+- **A broken config never disables the guard.** Invalid JSON, a wrong shape, an
+  empty list, or an unreadable file all fall back to the default patterns and
+  report the problem; emptying the file cannot silently turn confirmation off.
+- **The dialog is inert.** Commands are agent-authored, so control bytes and
+  newlines are stripped and long commands truncated before display — otherwise a
+  crafted command could repaint the prompt and show you something other than what
+  runs.
 
 ## Working and thinking indicators
 
