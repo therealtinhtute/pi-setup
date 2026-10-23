@@ -616,10 +616,25 @@ command matches a pattern, Pi asks before it runs.
 
 The shape is copied from a real Claude Code permission prompt, measured rather
 than guessed (OCR plus pixel sampling of a screenshot): a continuous dim rail
-instead of a box, an accent title, muted metadata, the command as plain bright
-text, and the selection in the accent. Five registers, no frames, no background
-fills — the command has to be the most legible thing in the dialog, because it is
-the thing you are agreeing to.
+instead of a box, an emphasis-coloured title, muted metadata, the command as
+plain bright text, and the selection in the emphasis colour. Five registers, no
+frames, no background fills — the command has to be the most legible thing in the
+dialog, because it is the thing you are agreeing to.
+
+**Position matters as much as the shape.** The dialog is not an overlay: an
+overlay floats in the middle of the screen, covering the conversation and
+detached from it. It is pushed into the editor slot instead, so it appears
+directly below the last message and directly above the footer — the same place
+Claude Code puts its permission prompt. Declining or accepting removes it and
+restores the input line where it was.
+
+The colours come from theme tokens, not hardcoded hex, but the *token* is chosen
+by role: the emphasis token must be brighter than the rail. In some themes
+`accent` is darker than `dim` (the bundled `cyan` theme is one), which made the
+selected option render dimmer than the hint text under it — the opposite of what
+a selection should look like. The suite therefore renders against every theme in
+`~/.pi/agent/themes` and asserts the luminance ordering, not just that the colours
+differ.
 
 Enter accepts (Yes is preselected), Escape cancels. Declining does not fail
 silently: the tool is blocked and the model receives the reason, so it asks you
