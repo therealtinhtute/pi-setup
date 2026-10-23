@@ -53,6 +53,7 @@ function fakeUi(answer, mode = "tui", keys = undefined) {
 	let rendered = [];
 	let renderedRaw = [];
 	let customCalls = 0;
+	let customOptions;
 	let settledExplicitly = false;
 	let fakeTheme = null;
 	return {
@@ -68,6 +69,9 @@ function fakeUi(answer, mode = "tui", keys = undefined) {
 		},
 		get renderedRaw() {
 			return renderedRaw;
+		},
+		get customOptions() {
+			return customOptions;
 		},
 		get customCalls() {
 			return customCalls;
@@ -88,8 +92,9 @@ function fakeUi(answer, mode = "tui", keys = undefined) {
 				return answer;
 			},
 			// Mirrors ctx.ui.custom: build the component, render it once, answer it.
-			async custom(factory, _options) {
+			async custom(factory, options) {
 				customCalls += 1;
+				customOptions = options;
 				const theme = fakeTheme ?? getThemeByName("dark");
 				let settled;
 				let settleCount = 0;
@@ -233,6 +238,19 @@ try {
 	const passed = await handleToolCall({ toolName: "bash", input }, shownUi, ["git push"]);
 	assert.equal(passed, undefined, "handler: accepting returns nothing, letting the call run");
 	assert.equal(shownUi.customCalls, 1, "handler: the Claude-Code box is used, not the generic selector");
+
+	// Where the dialog appears is part of the design, not cosmetics. An overlay floats
+	// in the middle of the screen, covering the conversation and detached from it; pi
+	// pushes a non-overlay dialog into the editor slot instead, which is where Claude
+	// Code puts its permission prompt -- directly below the last message and directly
+	// above the footer. Measured on a real Claude Code screenshot: the prompt, the
+	// question and the options occupy the bottom rows of the screen with no separate
+	// input line left below them.
+	assert.equal(
+		shownUi.customOptions?.overlay,
+		false,
+		"the dialog is anchored under the conversation, not floated over the middle",
+	);
 	assert.ok(shownUi.rendered.length > 5, "handler: the box renders a bordered dialog");
 	assert.match(shownUi.rendered.join("\n"), /git push origin main/, "handler: the box shows the real command");
 	assert.match(shownUi.rendered.join("\n"), /Bash command/, "handler: the box is titled");

@@ -233,7 +233,11 @@ export async function confirmWithBox(
 
 	const accepted = await ctx.ui.custom<boolean>(
 		(_tui, theme, _keybindings, done) => new ConfirmBox(theme, options, done),
-		{ overlay: true },
+		// Not an overlay: an overlay floats in the middle of the screen, detached from
+		// the conversation and covering the prompt. Without it the dialog is pushed into
+		// the editor slot, which is exactly where Claude Code puts its prompt -- directly
+		// under the last message and directly above the input line.
+		{ overlay: false },
 	);
 	// A dismissed overlay resolves to undefined: treat it as a refusal.
 	return accepted === true;
