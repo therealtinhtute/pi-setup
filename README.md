@@ -417,7 +417,7 @@ choice on 2026-10-22 and `pi-lens` replaced both `pi-lsp-extension` and
 | `pi-memory` | six `memory_*` tools plus `scratchpad` |
 | `pi-subagents@0.81.0` | `subagent`, `bg_wait`, FleetView |
 | `@narumitw/pi-goal` | `goal_*` tools and `/goal` |
-| `pi-lens` | `lens_diagnostics`, `symbol_search`, `module_report`, `read_symbol`, `read_enclosing`, `lsp_navigation`, `ast_grep_*` — one code-intelligence layer instead of `pi-lsp-extension` + a second LSP pool |
+| `pi-lens@4.4.4` | `lens_diagnostics`, `symbol_search`, `module_report`, `read_symbol`, `read_enclosing`, `lsp_navigation`, `ast_grep_*` — one code-intelligence layer instead of `pi-lsp-extension` + a second LSP pool |
 | `@heyhuynhgiabuu/pi-pretty` | message and tool rendering (see below); re-registers `read`/`edit`, owns no header or footer |
 
 Dropped, and why they should not come back without a measurement:

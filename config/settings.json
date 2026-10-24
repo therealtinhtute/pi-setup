@@ -18,7 +18,7 @@
     "npm:pi-subagents@0.81.0",
     "npm:@narumitw/pi-goal",
     "extensions/pi-pretty",
-    "npm:pi-lens"
+    "npm:pi-lens@4.4.4"
   ],
   "terminal": {
     "imageWidthCells": 60

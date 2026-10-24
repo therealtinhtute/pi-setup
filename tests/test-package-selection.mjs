@@ -27,7 +27,7 @@ const expected = [
 	// the TUI never used: pi-lens carries diagnostics, symbol search and the structural
 	// ast-grep tools in one package, so the second LSP client pool is gone and the
 	// tool-output sandbox (which overlapped /rewind and pi-memory) with it.
-	"npm:pi-lens",
+	"npm:pi-lens@4.4.4",
 	// Vendored 2026-10-23: pi-pretty was forked into extensions/pi-pretty so its
 	// renderer can be changed (working-indicator split, gradient work) without
 	// shipping a private npm package. Upstream v0.8.0, MIT. It adds no tool of its
