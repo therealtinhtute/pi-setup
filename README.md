@@ -448,6 +448,25 @@ against `pi-lsp-extension` on 2026-10-22; removing its competitor made it the wi
 
 Restart Pi or run `/reload` after changing the package selection.
 
+### Peer dependencies (`typebox`)
+
+`@juicesharp/rpiv-ask-user-question` imports `typebox` but only declares it as a
+**peer** dependency. npm does not install peers transitively, and pi's package
+manager does not either, so the extension dies at load with
+`Cannot find module 'typebox'` — and the failure is invisible: `ask_user_question`
+simply is not in the tool list, with no error in the TUI.
+
+`setup/install.sh` installs it into pi's own tree (`~/.pi/agent/npm`), because that
+is the `node_modules` the extension resolves from. It pins the version pi itself
+bundles (read from `pi-coding-agent/node_modules/typebox`) rather than taking
+npm's latest: two TypeBox copies in one process mean the registered parameter
+schema is not the one pi validates against, and the tool registers but never
+reaches the model's tool list.
+
+Note that `ask_user_question` is deliberately stripped in non-interactive runs
+(`pi --print`, RPC without a UI). The extension reconciles the active set against
+`ctx.hasUI` on every turn, so its absence there is expected, not a break.
+
 ### Message and tool rendering (pi-pretty)
 
 `@heyhuynhgiabuu/pi-pretty` styles what the TUI prints: a syntax-highlighted `read` preview,
@@ -546,6 +565,7 @@ pi-setup/
     ├── test-custom-footer.mjs
     ├── test-get-secret.mjs
     ├── test-package-selection.mjs
+    ├── test-peer-deps.mjs
     ├── test-pretty-border.mjs
     ├── test-rewind.mjs
     ├── test-web-search-config.mjs

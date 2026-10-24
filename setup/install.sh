@@ -288,6 +288,71 @@ else
   dim "    unchanged: ${WS_DEST/#$HOME/\~} (not touching your live config)"
 fi
 
+# --- Step 6b: peer dependencies for npm packages ----------------------------
+# Some pi packages import a dependency they only declare as a *peer*. npm does not
+# install peers transitively, and pi's package manager does not either, so the
+# extension throws "Cannot find module" at load and its tool silently never
+# registers. `@juicesharp/rpiv-ask-user-question` needs `typebox` this way: without
+# it, `ask_user_question` disappears from the TUI with no visible error.
+#
+# The version must match the copy pi itself bundles, otherwise two TypeBox schema
+# builders coexist and the registered parameter schema is not the one pi validates
+# against — the tool registers but never reaches the model's tool list.
+PEER_DIR="$PI_DIR/npm"
+peer_dep_for_package() {
+  case "$1" in
+    *rpiv-ask-user-question*|*rpiv-todo*|*rpiv-config*) echo "typebox" ;;
+    *) echo "" ;;
+  esac
+}
+# The typebox version pi already ships with, so peer imports resolve to one copy.
+pi_bundled_typebox_version() {
+  local pi_bin pi_real pkg_dir
+  pi_bin="$(command -v pi 2>/dev/null || true)"
+  [ -n "$pi_bin" ] || return 0
+  pi_real="$(realpath "$pi_bin" 2>/dev/null || echo "$pi_bin")"
+  pkg_dir="${pi_real%%/dist/*}"
+  [ -f "$pkg_dir/node_modules/typebox/package.json" ] || return 0
+  node -p "require('$pkg_dir/node_modules/typebox/package.json').version" 2>/dev/null || true
+}
+
+PEER_PKGS=""
+if [ -f "$SETTINGS_DEST" ]; then
+  while IFS= read -r src; do
+    dep="$(peer_dep_for_package "$src")"
+    [ -n "$dep" ] && ! printf '%s\n' "$PEER_PKGS" | grep -qx "$dep" && PEER_PKGS="${PEER_PKGS}${PEER_PKGS:+$'\n'}$dep"
+  done < <(node -e "const s=require('$SETTINGS_DEST');for(const p of s.packages??[])console.log(typeof p==='string'?p:p.source)" 2>/dev/null || true)
+fi
+
+if [ -n "$PEER_PKGS" ] && [ -d "$PEER_DIR" ]; then
+  echo ""
+  echo "Peer dependencies"
+  while IFS= read -r dep; do
+    [ -n "$dep" ] || continue
+    # Already installed and loadable? Nothing to do.
+    if [ -f "$PEER_DIR/node_modules/$dep/package.json" ]; then
+      dim "    unchanged: $dep@$(node -p "require('$PEER_DIR/node_modules/$dep/package.json').version" 2>/dev/null)"
+      continue
+    fi
+    pinned="$(pi_bundled_typebox_version)"
+    spec="$dep"
+    [ -n "$pinned" ] && spec="$dep@$pinned"
+    if [ "$DRY_RUN" = 1 ]; then
+      dim "    [dry-run] npm install $spec in ${PEER_DIR/#$HOME/\~}/"
+      continue
+    fi
+    if ! command -v npm >/dev/null 2>&1; then
+      yellow "  ⚠  npm not found — run 'npm install $spec' in ${PEER_DIR/#$HOME/\~}/"
+      continue
+    fi
+    if ( cd "$PEER_DIR" && npm install --save "$spec" --silent >/dev/null 2>&1 ); then
+      green "  ✓ peer installed: $spec"
+    else
+      yellow "  ⚠  could not install $spec in ${PEER_DIR/#$HOME/\~}/ — packages that need it will not load"
+    fi
+  done <<< "$PEER_PKGS"
+fi
+
 # --- Step 7: verify ----------------------------------------------------------
 echo ""
 echo "Verification"
@@ -301,6 +366,12 @@ echo "  settings.json   : $([ -f "$SETTINGS_DEST" ] && echo present || echo MISS
 echo "  models.json     : $([ -f "$MODELS_DEST" ] && echo present || echo MISSING)"
 echo "  pi-pretty.json  : $([ -f "$PRETTY_DEST" ] && echo present || echo MISSING)"
 echo "  web-search.json : $([ -f "$WS_DEST" ] && echo present || echo MISSING)"
+if [ -n "$PEER_PKGS" ]; then
+  while IFS= read -r dep; do
+    [ -n "$dep" ] || continue
+    echo "  peer $dep : $([ -f "$PEER_DIR/node_modules/$dep/package.json" ] && echo present || echo MISSING)"
+  done <<< "$PEER_PKGS"
+fi
 
 if [ "$DRY_RUN" = 1 ]; then
   echo ""
